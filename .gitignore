@@ -7,6 +7,10 @@ dist/
 build/
 *.tsbuildinfo
 
+# Frontend specific
+services/dashboard/frontend/build/
+services/dashboard/frontend/.eslintcache
+
 # Environment
 .env
 .env.*

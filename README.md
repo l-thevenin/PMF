@@ -1,8 +1,9 @@
 # PMF - Crypto Trading Bot
 
-Un système de trading automatisé avec deux microservices :
+Un système de trading automatisé avec trois microservices :
 - **Diego** : Service d'analyse de marché et génération de stratégies
 - **Miguel** : Service d'exécution de trades
+- **Dashboard** : Interface web pour visualiser les performances et trades
 
 ## Architecture
 
@@ -17,6 +18,11 @@ Un système de trading automatisé avec deux microservices :
             ┌──────────────┐
             │ PostgreSQL   │
             │  Database    │
+            └──────┬───────┘
+                   │
+            ┌──────────────┐
+            │  Dashboard   │
+            │ (Frontend)   │
             └──────────────┘
 ```
 
@@ -47,6 +53,30 @@ BINANCE_TEST_API_SECRET=your_test_api_secret_here
 ```bash
 # Démarrer tous les services
 docker-compose up --build
+
+# Accéder aux services :
+# - Diego (API) : http://localhost:3000
+# - Miguel (API) : http://localhost:3001  
+# - Dashboard (Web) : http://localhost:3002
+```
+
+## 📊 Dashboard Web
+
+Le dashboard fournit une interface graphique moderne pour :
+- **Vue d'ensemble** : Statistiques générales (stratégies, trades, taux de réussite, profits)
+- **Graphiques de performance** : Évolution des profits et trades sur 7 jours
+- **Liste des stratégies** : Stratégies récentes avec leurs performances
+- **Tableau des trades** : Historique détaillé des trades avec statuts et profits
+- **Actualisation en temps réel** : Mise à jour automatique toutes les 30 secondes
+
+### Accès au Dashboard
+- **URL** : http://localhost:3002
+- **Fonctionnalités** :
+  - ✅ Responsive design (mobile/desktop)
+  - 📈 Graphiques interactifs avec Recharts
+  - 🔄 Actualisation automatique
+  - 🎨 Interface moderne avec Tailwind CSS
+  - ⚡ API en lecture seule pour les performances
 
 # Voir les logs
 docker-compose logs -f
@@ -87,17 +117,46 @@ npm run start:miguel
 - `GET /test` - Test de fonctionnement
 - `POST /execute-strategy` - Exécuter une stratégie
 
+#### Dashboard (Port 3002)
+- `GET /` - Interface web du dashboard
+- `GET /api/overview` - Statistiques générales
+- `GET /api/strategies` - Liste des stratégies récentes
+- `GET /api/trades` - Liste des trades récents
+- `GET /api/performance` - Données de performance
+- `GET /api/trades-by-symbol` - Statistiques par symbole
+- `GET /api/health` - Check de santé du dashboard
+
 ### Exemple d'utilisation
 
 ```bash
 # Tester que les services fonctionnent
 curl http://localhost:3000/health
 curl http://localhost:3001/health
+curl http://localhost:3002/api/health
 
 # Analyser le marché BTC/USDT
-curl -X POST http://localhost:3000/analyze \\
-  -H "Content-Type: application/json" \\
+curl -X POST http://localhost:3000/analyze \
+  -H "Content-Type: application/json" \
   -d '{"symbol": "BTCUSDT", "timeframe": "1h"}'
+
+# Voir les données du dashboard
+curl http://localhost:3002/api/overview
+curl http://localhost:3002/api/strategies
+curl http://localhost:3002/api/trades
+```
+
+## 🛠️ Développement
+
+### Configuration initiale du Dashboard
+
+```bash
+# Windows
+.\setup-dashboard.ps1
+
+# Linux/Mac
+chmod +x setup-dashboard.sh
+./setup-dashboard.sh
+```
 ```
 
 ## Tests

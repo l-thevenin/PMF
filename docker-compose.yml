@@ -84,5 +84,29 @@ services:
         node --inspect=0.0.0.0:9230 dist/index.js
       "
 
+  dashboard:
+    build: 
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://trading:tradingpass@db:5432/tradingbot
+      PORT: 3002
+      NODE_ENV: production
+    ports:
+      - "3002:3002"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 10 &&
+        cd /app &&
+        npx prisma generate &&
+        echo 'Starting Dashboard service...' &&
+        npm start
+      "
+
 volumes:
   postgres_data:
