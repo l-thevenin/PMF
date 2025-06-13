@@ -108,5 +108,29 @@ services:
         npm start
       "
 
+  scheduler:
+    build: 
+      context: .
+      dockerfile: services/scheduler/Dockerfile
+    environment:
+      DIEGO_URL: http://diego:3000
+      CRON_PATTERN: "0 * * * * *"
+      ENABLE_SCHEDULER: "true"
+      RETRY_ATTEMPTS: 3
+      RETRY_DELAY_MS: 5000
+      RUN_ON_START: "true"
+      NODE_ENV: production
+    depends_on:
+      - diego
+      - miguel
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for Diego and Miguel services to be ready...' &&
+        sleep 30 &&
+        echo 'Starting Scheduler service...' &&
+        npm start
+      "
+
 volumes:
   postgres_data:
