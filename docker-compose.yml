@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      DATABASE_URL: postgresql://trading:tradingpass@db:5432/tradingbot
+      NODE_ENV: test
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: trading
+      POSTGRES_PASSWORD: tradingpass
+      POSTGRES_DB: tradingbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trading -d tradingbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  diego:
+    build: 
+      context: .
+      dockerfile: services/diego/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://trading:tradingpass@db:5432/tradingbot
+      BINANCE_TEST_API_KEY: ${BINANCE_TEST_API_KEY:-demo}
+      BINANCE_TEST_API_SECRET: ${BINANCE_TEST_API_SECRET:-demo}
+      PORT: 3000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+      - "9229:9229"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 10 &&
+        cd /app/services/diego &&
+        npx prisma generate &&
+        npx prisma db push --accept-data-loss &&
+        echo 'Starting Diego service...' &&
+        node --inspect=0.0.0.0:9229 dist/index.js
+      "
+
+  miguel:
+    build: 
+      context: .
+      dockerfile: services/miguel/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://trading:tradingpass@db:5432/tradingbot
+      BINANCE_TEST_API_KEY: ${BINANCE_TEST_API_KEY:-demo}
+      BINANCE_TEST_API_SECRET: ${BINANCE_TEST_API_SECRET:-demo}
+      PORT: 3001
+      DIEGO_URL: http://diego:3000
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+      - "9230:9230"
+    depends_on:
+      - diego
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for diego service to be ready...' &&
+        sleep 15 &&
+        cd /app/services/miguel &&
+        npx prisma generate &&
+        npx prisma db push --accept-data-loss &&
+        echo 'Starting Miguel service...' &&
+        node --inspect=0.0.0.0:9230 dist/index.js
+      "
+
+volumes:
+  postgres_data:

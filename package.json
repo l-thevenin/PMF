@@ -1,0 +1,54 @@
+{
+  "name": "crypto-trading-bot",
+  "version": "1.0.0",
+  "description": "Système de trading automatisé avec Diego (analyse) et Miguel (exécution)",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "services/*"
+  ],  "scripts": {
+    "clean": "rimraf services/*/dist shared/dist services/*/src/**/*.js shared/src/**/*.js",
+    "prebuild": "npm run clean",
+    "build": "npm run build --workspace=@pmf/shared && npm run build --workspace=@pmf/diego && npm run build --workspace=@pmf/miguel",
+    "start:diego": "cd services/diego && npm start",
+    "start:miguel": "cd services/miguel && npm start",
+    "start": "docker-compose up --build",
+    "test": "jest",
+    "test:integration": "jest tests/integration.test.ts --verbose --timeout=60000",
+    "test:docker": "echo 'Docker tests temporarily disabled due to Prisma memory issues'",
+    "test:watch": "jest --watch",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"**/*.ts\"",
+    "dev:diego": "cd services/diego && npm run dev",
+    "dev:miguel": "cd services/miguel && npm run dev"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/axios": "^0.9.36",
+    "@types/express": "^5.0.3",
+    "@types/express-serve-static-core": "^5.0.6",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.4.0",
+    "@types/node-fetch": "^2.6.4",
+    "@types/supertest": "^6.0.3",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.44.0",
+    "express": "^5.1.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.0.0",
+    "rimraf": "^5.0.1",
+    "supertest": "^7.1.1",
+    "testcontainers": "^11.0.3",
+    "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.6",
+    "verify": "^0.1.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.9.0",
+    "axios": "^1.9.0",
+    "node-binance-api": "^1.0.10"
+  }
+}

@@ -1,0 +1,17 @@
+# Ignore node_modules in all directories
+**/node_modules
+
+# Ignore build artifacts
+**/dist
+**/*.tsbuildinfo
+
+# Ignore git directory
+.git
+.gitignore
+
+# Ignore environment files
+.env
+.env.*
+
+# Ignore any logs
+**/*.log

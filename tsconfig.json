@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "declaration": true,
+    "composite": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@pmf/shared": ["./shared/src"],
+      "@pmf/shared/*": ["./shared/src/*"]
+    }
+  },
+  "references": [
+    { "path": "./shared" },
+    { "path": "./services/diego" },
+    { "path": "./services/miguel" }
+  ],
+  "exclude": ["**/node_modules", "**/dist"]
+}
