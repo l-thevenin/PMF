@@ -1,6 +1,6 @@
-# PMF Scheduler Service
+# Pedro - Service de Planification Automatique
 
-Le scheduler PMF est responsable de l'automatisation du scalping en déclenchant des analyses périodiques via le service Diego.
+Pedro est le service de planification automatique du système PMF (Personal Money Flow). Il déclenche automatiquement des analyses de trading via le service Diego toutes les 60 secondes.
 
 ## Fonctionnalités
 

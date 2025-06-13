@@ -25,7 +25,7 @@ interface AnalysisResponse {
   error?: string;
 }
 
-class ScalpingScheduler {
+class PedroScheduler {
   private config: SchedulerConfig;
   private isRunning: boolean = false;
   private stats = {
@@ -52,7 +52,7 @@ class ScalpingScheduler {
 
   private log(message: string, ...args: any[]) {
     const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] [SCHEDULER] ${message}`, ...args);
+    console.log(`[${timestamp}] [PEDRO] ${message}`, ...args);
   }
 
   private async sleep(ms: number): Promise<void> {
@@ -224,16 +224,16 @@ class ScalpingScheduler {
 }
 
 // Gestion des signaux pour un arrêt propre
-const scheduler = new ScalpingScheduler();
+const scheduler = new PedroScheduler();
 
 process.on('SIGINT', () => {
-  console.log('\nReceived SIGINT, stopping scheduler...');
+  console.log('\nReceived SIGINT, stopping Pedro scheduler...');
   scheduler.stop();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  console.log('\nReceived SIGTERM, stopping scheduler...');
+  console.log('\nReceived SIGTERM, stopping Pedro scheduler...');
   scheduler.stop();
   process.exit(0);
 });
@@ -254,4 +254,4 @@ process.on('unhandledRejection', (reason, promise) => {
 // Démarrer le scheduler
 scheduler.start();
 
-export default ScalpingScheduler;
+export default PedroScheduler;

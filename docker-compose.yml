@@ -108,10 +108,10 @@ services:
         npm start
       "
 
-  scheduler:
+  pedro:
     build: 
       context: .
-      dockerfile: services/scheduler/Dockerfile
+      dockerfile: services/pedro/Dockerfile
     environment:
       DIEGO_URL: http://diego:3000
       CRON_PATTERN: "0 * * * * *"
@@ -128,9 +128,24 @@ services:
       sh -c "
         echo 'Waiting for Diego and Miguel services to be ready...' &&
         sleep 30 &&
-        echo 'Starting Scheduler service...' &&
+        echo 'Starting Pedro scheduler service...' &&
         npm start
       "
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@pmf.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    restart: unless-stopped
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
 volumes:
   postgres_data:
+  pgadmin_data:

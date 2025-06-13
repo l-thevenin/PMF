@@ -7,15 +7,15 @@ RUN apk add --no-cache openssl curl
 # Créer le répertoire de l'application
 WORKDIR /app
 
-# Copier les fichiers de configuration des dépendances depuis le contexte scheduler
-COPY services/scheduler/package*.json ./
-COPY services/scheduler/tsconfig.json ./
+# Copier les fichiers de configuration des dépendances depuis le contexte pedro
+COPY services/pedro/package*.json ./
+COPY services/pedro/tsconfig.json ./
 
 # Installer les dépendances
 RUN npm install
 
 # Copier le code source
-COPY services/scheduler/src/ ./src/
+COPY services/pedro/src/ ./src/
 
 # Compiler TypeScript
 RUN npm run build
@@ -24,8 +24,8 @@ RUN npm run build
 EXPOSE 3003
 
 # Créer un utilisateur non-root pour la sécurité
-RUN addgroup -g 1001 -S nodejs && adduser -S scheduler -u 1001 -G nodejs
-USER scheduler
+RUN addgroup -g 1001 -S nodejs && adduser -S pedro -u 1001 -G nodejs
+USER pedro
 
 # Commande de démarrage
 CMD ["npm", "start"]
