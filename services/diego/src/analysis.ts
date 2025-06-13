@@ -62,23 +62,31 @@ export async function generateStrategy(
   symbol: string,
   timeframe: string
 ): Promise<Omit<Strategy, 'id' | 'createdAt'>> {
-  const riskFactor = 0.02; // 2% risk per trade
-  const leverageRatio = 5; // 5x leverage
+  // Configuration dynamique selon le timeframe
+  const timeframeConfig = getTimeframeConfig(timeframe);
+  const riskFactor = timeframeConfig.riskFactor;
+  const leverageRatio = timeframeConfig.leverageRatio;
   
   if (trend.direction === 'SIDEWAYS') {
-    throw new Error('No clear trend direction for strategy generation');
+    throw new Error(`No clear trend direction for strategy generation on ${symbol} (${timeframe})`);
   }
 
   if (!trend.support || !trend.resistance) {
-    throw new Error('Support and resistance levels are required for strategy generation');
+    throw new Error(`Support and resistance levels are required for strategy generation on ${symbol} (${timeframe})`);
   }
 
   const action = trend.direction === 'UP' ? 'BUY' : 'SELL';
   const price = action === 'BUY' ? trend.resistance : trend.support;
   const stopLoss = action === 'BUY' ? trend.support : trend.resistance;
   const priceMove = Math.abs(price - stopLoss);
-  const takeProfit = action === 'BUY' ? price + priceMove * 2 : price - priceMove * 2;
   
+  // Ajuster le take profit selon le timeframe
+  const takeProfitMultiplier = timeframeConfig.takeProfitMultiplier;
+  const takeProfit = action === 'BUY' 
+    ? price + priceMove * takeProfitMultiplier 
+    : price - priceMove * takeProfitMultiplier;
+  
+  // Calculer la quantité selon le risque et le timeframe
   const quantity = (riskFactor * leverageRatio) / (priceMove / price);
   
   const parameters: StrategyParameters = {
@@ -89,10 +97,73 @@ export async function generateStrategy(
     takeProfit: parseFloat(takeProfit.toFixed(8))
   };
   
+  // Ajuster la confiance selon le timeframe et la force de la tendance
+  const adjustedConfidence = Math.min(trend.strength * timeframeConfig.confidenceMultiplier, 1);
+  
   return {
     symbol,
     timeframe,
     parameters,
-    confidence: trend.strength
+    confidence: adjustedConfidence
   };
+}
+
+interface TimeframeConfig {
+  riskFactor: number;
+  leverageRatio: number;
+  takeProfitMultiplier: number;
+  confidenceMultiplier: number;
+}
+
+function getTimeframeConfig(timeframe: string): TimeframeConfig {
+  switch (timeframe) {
+    case '1m':
+    case '3m':
+      // Scalping rapide - risque plus élevé, profits plus petits
+      return {
+        riskFactor: 0.015, // 1.5% risk
+        leverageRatio: 3,
+        takeProfitMultiplier: 1.5,
+        confidenceMultiplier: 0.8 // Moins de confiance sur les très courts termes
+      };
+    
+    case '5m':
+    case '15m':
+      // Scalping standard
+      return {
+        riskFactor: 0.02, // 2% risk
+        leverageRatio: 5,
+        takeProfitMultiplier: 2,
+        confidenceMultiplier: 1.0
+      };
+    
+    case '30m':
+    case '1h':
+      // Trading intraday
+      return {
+        riskFactor: 0.025, // 2.5% risk
+        leverageRatio: 4,
+        takeProfitMultiplier: 2.5,
+        confidenceMultiplier: 1.1
+      };
+    
+    case '2h':
+    case '4h':
+      // Trading swing court
+      return {
+        riskFactor: 0.03, // 3% risk
+        leverageRatio: 3,
+        takeProfitMultiplier: 3,
+        confidenceMultiplier: 1.2
+      };
+    
+    default:
+      // Timeframes plus longs - trading swing
+      return {
+        riskFactor: 0.035, // 3.5% risk
+        leverageRatio: 2,
+        takeProfitMultiplier: 4,
+        confidenceMultiplier: 1.3 // Plus de confiance sur les timeframes longs
+      };
+  }
 }

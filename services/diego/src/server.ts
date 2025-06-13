@@ -70,16 +70,18 @@ export async function createServer(config: ServerConfig): Promise<express.Applic
       return;
     }
     
-    try {
-      console.log(`Analyzing ${symbol} on ${timeframe} timeframe`);
+    try {      console.log(`📊 Analyzing ${symbol} on ${timeframe} timeframe`);
       
       // Obtenir les données du marché
       const rawCandlesticks = await binance.candlesticks(symbol, timeframe);
 
       if (!rawCandlesticks || rawCandlesticks.length === 0) {
+        console.log(`❌ No market data available for ${symbol} on ${timeframe}`);
         res.status(400).json({ error: 'No market data available for the specified symbol/timeframe' });
         return;
       }
+
+      console.log(`📈 Retrieved ${rawCandlesticks.length} candlesticks for ${symbol} (${timeframe})`);
 
       // Adapter les données pour correspondre au type Candlestick attendu
       const candlesticks = rawCandlesticks.map((candle: any) => ({
@@ -94,13 +96,23 @@ export async function createServer(config: ServerConfig): Promise<express.Applic
         trades: candle[8],
         takerBuyBaseAssetVolume: candle[9],
         takerBuyQuoteAssetVolume: candle[10]
-      }));
-
-      // Analyser la tendance
+      }));      // Analyser la tendance
       const trend = await analyzeTrend(candlesticks);
+      console.log(`🎯 Trend analysis for ${symbol} (${timeframe}):`, {
+        direction: trend.direction,
+        strength: trend.strength.toFixed(3),
+        support: trend.support.toFixed(4),
+        resistance: trend.resistance.toFixed(4)
+      });
       
       // Générer une stratégie
       const strategy = await generateStrategy(trend, symbol, timeframe);
+      console.log(`⚡ Strategy generated for ${symbol} (${timeframe}):`, {
+        action: strategy.parameters.action,
+        price: strategy.parameters.price,
+        quantity: strategy.parameters.quantity,
+        confidence: strategy.confidence.toFixed(3)
+      });
       
       // Sauvegarder la stratégie dans la base de données
       const savedStrategy = await config.prisma.strategy.create({
@@ -112,17 +124,16 @@ export async function createServer(config: ServerConfig): Promise<express.Applic
         }
       });
       
-      console.log(`Strategy created with ID: ${savedStrategy.id}`);
+      console.log(`💾 Strategy saved with ID: ${savedStrategy.id} for ${symbol} (${timeframe})`);
       
       // Notifier Miguel de la nouvelle stratégie
       try {
         await notifyMiguel({
           ...savedStrategy,
           parameters: JSON.parse(savedStrategy.parameters as string)
-        });
-        console.log(`Miguel notified successfully for strategy ${savedStrategy.id}`);
+        });        console.log(`🚀 Miguel notified successfully for strategy ${savedStrategy.id} (${symbol})`);
       } catch (miguelError) {
-        console.error('Failed to notify Miguel, but strategy was saved:', miguelError);
+        console.error(`⚠️ Failed to notify Miguel for ${symbol} strategy, but strategy was saved:`, miguelError);
         // Continue anyway as strategy was saved
       }
        

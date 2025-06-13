@@ -11,6 +11,8 @@ interface SchedulerConfig {
   enableScheduler: boolean;
   retryAttempts: number;
   retryDelayMs: number;
+  symbols: string[];
+  timeframes: string[];
 }
 
 interface AnalysisResponse {
@@ -38,13 +40,17 @@ class PedroScheduler {
     lastError: null as string | null
   };
 
-  constructor() {
-    this.config = {
+  constructor() {    this.config = {
       diegoUrl: process.env.DIEGO_URL || 'http://diego:3001',
       cronPattern: process.env.CRON_PATTERN || '0 * * * * *', // Toutes les 60 secondes
       enableScheduler: process.env.ENABLE_SCHEDULER !== 'false',
       retryAttempts: parseInt(process.env.RETRY_ATTEMPTS || '3'),
-      retryDelayMs: parseInt(process.env.RETRY_DELAY_MS || '5000')
+      retryDelayMs: parseInt(process.env.RETRY_DELAY_MS || '5000'),
+      symbols: process.env.TRADING_SYMBOLS ? process.env.TRADING_SYMBOLS.split(',') : [
+        'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 'LINKUSDT', 
+        'LTCUSDT', 'XRPUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT'
+      ],
+      timeframes: process.env.TRADING_TIMEFRAMES ? process.env.TRADING_TIMEFRAMES.split(',') : ['1m', '5m', '15m']
     };
 
     this.log('Scheduler initialized with config:', this.config);
@@ -58,12 +64,11 @@ class PedroScheduler {
   private async sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
-
-  private async callDiegoAnalysis(): Promise<AnalysisResponse> {
+  private async callDiegoAnalysis(symbol: string = 'BTCUSDT', timeframe: string = '1m'): Promise<AnalysisResponse> {
     try {
-      this.log('Calling Diego analysis endpoint...');      const response = await axios.post(`${this.config.diegoUrl}/analyze`, {
-        symbol: 'BTCUSDT', // Symbole sans slash pour Binance API
-        timeframe: '1m'
+      this.log(`Calling Diego analysis endpoint for ${symbol}...`);      const response = await axios.post(`${this.config.diegoUrl}/analyze`, {
+        symbol: symbol, // Symbole sans slash pour Binance API
+        timeframe: timeframe
       }, {
         timeout: 30000, // 30 secondes de timeout
         headers: {
@@ -71,7 +76,7 @@ class PedroScheduler {
         }
       });
 
-      this.log('Diego response:', response.status, response.data);
+      this.log(`Diego response for ${symbol}:`, response.status, response.data);
       return response.data as AnalysisResponse;
     } catch (error: any) {
       this.log('Error calling Diego:', error.message);
@@ -97,7 +102,6 @@ class PedroScheduler {
       }
     }
   }
-
   private async executeScalpingCycle(): Promise<void> {
     if (this.isRunning) {
       this.log('Previous cycle still running, skipping...');
@@ -108,81 +112,98 @@ class PedroScheduler {
     this.stats.totalRuns++;
     this.stats.lastRunTime = new Date();
 
-    this.log(`Starting scalping cycle #${this.stats.totalRuns}`);
+    this.log(`Starting scalping cycle #${this.stats.totalRuns} with ${this.config.symbols.length} symbols`);
 
-    let attempt = 0;
-    let success = false;
+    let totalAttempts = 0;
+    let totalSuccessfulAnalyses = 0;
 
-    while (attempt < this.config.retryAttempts && !success) {
-      attempt++;
+    // Analyser chaque symbole avec différents timeframes
+    for (const symbol of this.config.symbols) {
+      // Sélectionner un timeframe aléatoire pour diversifier
+      const timeframe = this.config.timeframes[Math.floor(Math.random() * this.config.timeframes.length)];
       
-      if (attempt > 1) {
-        this.log(`Retry attempt ${attempt}/${this.config.retryAttempts}`);
-        await this.sleep(this.config.retryDelayMs);
+      this.log(`Analyzing ${symbol} on ${timeframe} timeframe...`);
+      
+      let attempt = 0;
+      let success = false;
+
+      while (attempt < this.config.retryAttempts && !success) {
+        attempt++;
+        totalAttempts++;
+        
+        if (attempt > 1) {
+          this.log(`Retry attempt ${attempt}/${this.config.retryAttempts} for ${symbol}`);
+          await this.sleep(this.config.retryDelayMs);
+        }
+
+        try {        
+          const result = await this.callDiegoAnalysis(symbol, timeframe);
+          
+          if (result.id) { // Diego retourne la stratégie avec un ID si succès
+            totalSuccessfulAnalyses++;
+            this.log(`✅ Strategy created for ${symbol} (${timeframe}) - ID: ${result.id}, confidence: ${result.confidence}`);
+            
+            if (result.parameters) {
+              this.log(`Strategy parameters for ${symbol}:`, JSON.stringify(result.parameters, null, 2));
+            }
+            
+            success = true;
+          } else {
+            this.log(`❌ Analysis failed for ${symbol} (${timeframe}):`, result.message || 'Unknown error', result.error);
+          }
+        } catch (error: any) {
+          this.log(`💥 Unexpected error analyzing ${symbol} (${timeframe}):`, error.message);
+        }
       }
 
-      try {        const result = await this.callDiegoAnalysis();
-        
-        if (result.id) { // Diego retourne la stratégie avec un ID si succès
-          this.stats.successfulRuns++;
-          this.stats.lastSuccessTime = new Date();
-          this.log('Scalping cycle completed successfully');
-          
-          if (result.parameters) {
-            this.log('Strategy parameters:', JSON.stringify(result.parameters, null, 2));
-          }
-          
-          this.log(`Strategy created with ID: ${result.id}, confidence: ${result.confidence}`);
-          
-          success = true;
-        } else {
-          this.log('Diego returned error:', result.message || 'Unknown error', result.error);
-          
-          if (attempt === this.config.retryAttempts) {
-            this.stats.failedRuns++;
-            this.stats.lastErrorTime = new Date();
-            this.stats.lastError = result.error || result.message || 'Unknown error';
-          }
-        }
-      } catch (error: any) {
-        this.log('Unexpected error in scalping cycle:', error.message);
-        
-        if (attempt === this.config.retryAttempts) {
-          this.stats.failedRuns++;
-          this.stats.lastErrorTime = new Date();
-          this.stats.lastError = error.message;
-        }
+      // Petite pause entre les analyses pour éviter de surcharger l'API
+      if (symbol !== this.config.symbols[this.config.symbols.length - 1]) {
+        await this.sleep(1000); // 1 seconde entre chaque analyse
       }
+    }
+
+    // Mettre à jour les statistiques globales
+    if (totalSuccessfulAnalyses > 0) {
+      this.stats.successfulRuns++;
+      this.stats.lastSuccessTime = new Date();
+      this.log(`🎉 Scalping cycle completed: ${totalSuccessfulAnalyses}/${this.config.symbols.length} successful analyses`);
+    } else {
+      this.stats.failedRuns++;
+      this.stats.lastErrorTime = new Date();
+      this.stats.lastError = 'All symbol analyses failed';
+      this.log('😞 All analyses failed in this cycle');
     }
 
     this.isRunning = false;
     this.logStats();
   }
-
   private logStats(): void {
-    this.log('=== Scheduler Statistics ===');
-    this.log(`Total runs: ${this.stats.totalRuns}`);
-    this.log(`Successful runs: ${this.stats.successfulRuns}`);
-    this.log(`Failed runs: ${this.stats.failedRuns}`);
+    this.log('=== Pedro Scheduler Statistics ===');
+    this.log(`Total cycles: ${this.stats.totalRuns}`);
+    this.log(`Successful cycles: ${this.stats.successfulRuns}`);
+    this.log(`Failed cycles: ${this.stats.failedRuns}`);
     this.log(`Success rate: ${this.stats.totalRuns > 0 ? ((this.stats.successfulRuns / this.stats.totalRuns) * 100).toFixed(2) : 0}%`);
-    this.log(`Last run: ${this.stats.lastRunTime?.toISOString() || 'Never'}`);
+    this.log(`Symbols analyzed per cycle: ${this.config.symbols.length}`);
+    this.log(`Active symbols: [${this.config.symbols.join(', ')}]`);
+    this.log(`Active timeframes: [${this.config.timeframes.join(', ')}]`);
+    this.log(`Last cycle: ${this.stats.lastRunTime?.toISOString() || 'Never'}`);
     this.log(`Last success: ${this.stats.lastSuccessTime?.toISOString() || 'Never'}`);
     
     if (this.stats.lastError) {
       this.log(`Last error: ${this.stats.lastError} (${this.stats.lastErrorTime?.toISOString()})`);
     }
     
-    this.log('=========================');
+    this.log('================================');
   }
 
   public start(): void {
     if (!this.config.enableScheduler) {
       this.log('Scheduler is disabled via ENABLE_SCHEDULER=false');
       return;
-    }
-
-    this.log(`Starting scalping scheduler with pattern: ${this.config.cronPattern}`);
-    this.log('This will trigger Diego analysis every 60 seconds');
+    }    this.log(`Starting Pedro scalping scheduler with pattern: ${this.config.cronPattern}`);
+    this.log(`This will analyze ${this.config.symbols.length} symbols with ${this.config.timeframes.length} timeframes every 60 seconds`);
+    this.log(`Symbols: [${this.config.symbols.join(', ')}]`);
+    this.log(`Timeframes: [${this.config.timeframes.join(', ')}]`);
 
     // Valider le pattern cron
     if (!cron.validate(this.config.cronPattern)) {
