@@ -1,0 +1,33 @@
+// This is your Prisma schema file
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Strategy {
+  id          String      @id @default(uuid())
+  createdAt   DateTime    @default(now())
+  symbol      String
+  timeframe   String
+  parameters  Json
+  confidence  Float
+  trades      Trade[]
+}
+
+model Trade {
+  id             String    @id @default(uuid())
+  createdAt      DateTime  @default(now())
+  strategyId     String
+  symbol         String
+  type           String    // BUY or SELL
+  price          Float
+  quantity       Float
+  status         String    // PENDING, EXECUTED, FAILED
+  executionPrice Float?
+  profit         Float?
+  strategy       Strategy  @relation(fields: [strategyId], references: [id])
+}
