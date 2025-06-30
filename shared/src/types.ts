@@ -28,6 +28,15 @@ export interface Trade {
     profit?: number;
 }
 
+export interface TradeResult {
+    success: boolean;
+    tradeId?: string;
+    executionPrice?: number;
+    profit?: number;
+    message?: string;
+    error?: string;
+}
+
 export interface Candlestick {
     openTime: number;
     open: string;

@@ -5,6 +5,17 @@ import { Strategy, StrategyParameters, Trade, TradeResult } from '@pmf/shared';
 import axios from 'axios';
 import fetch from 'node-fetch';
 
+// Interface for Portfolio API responses
+interface PortfolioCanBuyResponse {
+  canBuy: boolean;
+  reason?: string;
+}
+
+interface PortfolioCanSellResponse {
+  canSell: boolean;
+  reason?: string;
+}
+
 console.log('Starting Miguel service...');
 
 const prisma = new PrismaClient();
@@ -234,14 +245,14 @@ async function checkPortfolioBeforeTrade(action: string, symbol: string, quantit
     if (action === 'BUY') {
       const amount = quantity * price;
       const response = await fetch(`${PORTFOLIO_SERVICE_URL}/portfolio/can-buy?amount=${amount}`);
-      const data = await response.json();
+      const data = await response.json() as PortfolioCanBuyResponse;
       return {
         allowed: data.canBuy,
         reason: data.reason
       };
     } else if (action === 'SELL') {
       const response = await fetch(`${PORTFOLIO_SERVICE_URL}/portfolio/can-sell/${symbol}?quantity=${quantity}`);
-      const data = await response.json();
+      const data = await response.json() as PortfolioCanSellResponse;
       return {
         allowed: data.canSell,
         reason: data.reason

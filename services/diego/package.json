@@ -7,7 +7,8 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "clean": "rimraf dist"
-  },  "dependencies": {
+  },
+  "dependencies": {
     "@pmf/shared": "1.0.0",
     "@prisma/client": "^5.0.0",
     "axios": "^1.9.0",
@@ -15,7 +16,8 @@
     "node-binance-api": "^0.13.1",
     "technicalindicators": "^3.1.0"
   },
-  "devDependencies": {    "@types/express": "^5.0.3",
+  "devDependencies": {
+    "@types/express": "^5.0.3",
     "@types/node": "^20.4.0",
     "prisma": "^5.0.0",
     "ts-node": "^10.9.1",

@@ -6,7 +6,8 @@
   "workspaces": [
     "shared",
     "services/*"
-  ],  "scripts": {
+  ],
+  "scripts": {
     "clean": "rimraf services/*/dist shared/dist services/*/src/**/*.js shared/src/**/*.js",
     "prebuild": "npm run clean",
     "build": "npm run build --workspace=@pmf/shared && npm run build --workspace=@pmf/diego && npm run build --workspace=@pmf/miguel",
