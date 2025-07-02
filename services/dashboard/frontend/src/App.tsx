@@ -4,7 +4,6 @@ import OverviewCards from './components/OverviewCards';
 import TradingMetrics from './components/TradingMetrics';
 import TradesTable from './components/TradesTable';
 import StrategiesList from './components/StrategiesList';
-import WorkflowStatus from './components/WorkflowStatus';
 import LiveTradesMonitor from './components/LiveTradesMonitor';
 import './index.css';
 
@@ -122,13 +121,6 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {overview && (
           <>
-            {/* Workflow Status */}
-            <WorkflowStatus 
-              pedroStats={workflowStatus?.pedroStats}
-              activeTrades={overview.activeTrades}
-              monitoredTrades={overview.monitoredTrades}
-            />
-
             {/* Overview Cards */}
             <OverviewCards overview={overview} />
 

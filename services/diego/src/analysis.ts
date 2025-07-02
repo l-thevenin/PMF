@@ -71,20 +71,23 @@ export async function generateStrategy(
     throw new Error(`No clear trend direction for strategy generation on ${symbol} (${timeframe})`);
   }
 
+  // Ne générer que des stratégies d'achat (BUY)
+  if (trend.direction === 'DOWN') {
+    throw new Error(`No BUY opportunity detected - trend is DOWN on ${symbol} (${timeframe})`);
+  }
+
   if (!trend.support || !trend.resistance) {
     throw new Error(`Support and resistance levels are required for strategy generation on ${symbol} (${timeframe})`);
   }
 
-  const action = trend.direction === 'UP' ? 'BUY' : 'SELL';
-  const price = action === 'BUY' ? trend.resistance : trend.support;
-  const stopLoss = action === 'BUY' ? trend.support : trend.resistance;
+  const action = 'BUY'; // Toujours BUY
+  const price = trend.resistance;
+  const stopLoss = trend.support;
   const priceMove = Math.abs(price - stopLoss);
   
-  // Ajuster le take profit selon le timeframe
+  // Ajuster le take profit selon le timeframe (toujours pour BUY)
   const takeProfitMultiplier = timeframeConfig.takeProfitMultiplier;
-  const takeProfit = action === 'BUY' 
-    ? price + priceMove * takeProfitMultiplier 
-    : price - priceMove * takeProfitMultiplier;
+  const takeProfit = price + priceMove * takeProfitMultiplier;
   
   // Calculer la quantité selon le risque et le timeframe
   const quantity = (riskFactor * leverageRatio) / (priceMove / price);

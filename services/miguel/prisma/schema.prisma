@@ -32,6 +32,7 @@ model Trade {
   sellReason        String?        // STOP_LOSS, TAKE_PROFIT, TIME_LIMIT
   profit            Float?
   holdingStartTime  DateTime?
+  metadata          Json?          // Store OCO order IDs and other metadata
   strategy          Strategy       @relation(fields: [strategyId], references: [id])
   feedback          TradeFeedback?
 }

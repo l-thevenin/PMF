@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import Binance from 'node-binance-api';
 import { Strategy, StrategyParameters, Trade } from '@pmf/shared';
 import axios from 'axios';
+import crypto from 'crypto';
 
 // Interface pour les données de surveillance de vente
 interface SellMonitoringData {
@@ -119,32 +120,145 @@ app.post('/execute-strategy', async (req, res) => {
     console.log(`Created trade with ID: ${trade.id}`);
     
     try {
+      // Ajuster la quantité selon les règles Binance
+      const adjustedQuantity = await getAdjustedQuantity(strategy.symbol, quantity);
+      
       // Exécuter l'achat sur Binance testnet
-      console.log(`🛒 Executing BUY order: ${quantity} ${strategy.symbol} at market price`);
-      const buyOrder = await binance.marketBuy(strategy.symbol, quantity);
+      console.log(`🛒 Executing BUY order: ${adjustedQuantity} ${strategy.symbol} at market price`);
+      console.log(`📊 Strategy parameters - Stop Loss: ${stopLoss}, Take Profit: ${takeProfit}`);
+      
+      const buyOrder = await binance.marketBuy(strategy.symbol, adjustedQuantity);
       console.log('✅ Buy order executed on Binance testnet:', buyOrder);
       
       const executedPrice = parseFloat(buyOrder.fills[0].price) || price;
-      const executedQuantity = parseFloat(buyOrder.executedQty) || quantity;
+      const executedQuantity = parseFloat(buyOrder.executedQty) || adjustedQuantity;
+      
+      // Si on a des paramètres de stop loss et take profit, créer un ordre OCO
+      if (stopLoss && takeProfit) {
+        try {
+          console.log(`🎯 Creating OCO order for automatic stop loss and take profit management`);
+          console.log(`📊 OCO Parameters - SL: ${stopLoss}, TP: ${takeProfit}, Qty: ${executedQuantity}`);
+          
+          // Créer un ordre OCO (One-Cancels-Other) selon la documentation officielle Binance
+          const ocoOrderParams = {
+            symbol: strategy.symbol,
+            side: 'SELL',
+            quantity: executedQuantity.toString(),
+            aboveType: 'LIMIT_MAKER', // Take profit (au-dessus du prix actuel)
+            abovePrice: takeProfit.toString(),
+            belowType: 'STOP_LOSS', // Stop loss (en-dessous du prix actuel)
+            belowStopPrice: stopLoss.toString(),
+            newOrderRespType: 'FULL',
+            timestamp: Date.now().toString()
+          };
+
+          // Créer la query string pour la signature
+          const queryString = new URLSearchParams(ocoOrderParams).toString();
+          const signature = createBinanceSignature(queryString, process.env.BINANCE_SECRET_KEY!);
+          
+          // Ajouter la signature aux paramètres
+          const finalParams = { ...ocoOrderParams, signature };
+
+          const ocoOrder = await axios.post(
+            `${process.env.BINANCE_API_URL}/api/v3/orderList/oco`,
+            new URLSearchParams(finalParams),
+            {
+              headers: {
+                'X-MBX-APIKEY': process.env.BINANCE_API_KEY,
+                'Content-Type': 'application/x-www-form-urlencoded'
+              }
+            }
+          );
+
+          const ocoResponse = ocoOrder.data as any;
+          
+          console.log('✅ OCO order created successfully:', ocoResponse);
+          
+          // Mettre à jour le trade avec l'ID de l'ordre OCO
+          await prisma.trade.update({
+            where: { id: trade.id },
+            data: { 
+              status: 'EXECUTED',
+              executionPrice: executedPrice,
+              quantity: executedQuantity,
+              holdingStartTime: new Date(),
+              // Stocker l'ID de l'ordre OCO pour le suivi
+              metadata: JSON.stringify({ ocoOrderId: ocoResponse.orderListId })
+            }
+          });
+          
+          console.log(`✅ Buy trade executed with OCO protection at price: ${executedPrice}`);
+          
+          // Démarrer uniquement la surveillance légère pour les ordres OCO
+          startOCOMonitoring(trade.id, {
+            symbol: strategy.symbol,
+            buyPrice: executedPrice,
+            quantity: executedQuantity,
+            stopLoss,
+            takeProfit,
+            holdingDurationMs: holdingDurationMs || 60000,
+            strategyId: strategy.id,
+            buyTime: new Date()
+          }, ocoResponse.orderListId);
+          
+        } catch (ocoError) {
+          console.error('Failed to create OCO order, falling back to manual monitoring:', ocoError);
+          
+          // En cas d'échec de l'ordre OCO, revenir au système de surveillance manuel
+          await prisma.trade.update({
+            where: { id: trade.id },
+            data: { 
+              status: 'EXECUTED',
+              executionPrice: executedPrice,
+              quantity: executedQuantity,
+              holdingStartTime: new Date()
+            }
+          });
+          
+          // Démarrer la surveillance automatique manuelle
+          startAutomaticSellMonitoring(trade.id, {
+            symbol: strategy.symbol,
+            buyPrice: executedPrice,
+            quantity: executedQuantity,
+            stopLoss,
+            takeProfit,
+            holdingDurationMs: holdingDurationMs || 60000,
+            strategyId: strategy.id,
+            buyTime: new Date()
+          });
+        }
+      } else {
+        // Pas de SL/TP, utiliser le système de surveillance manuel avec limite de temps uniquement
+        await prisma.trade.update({
+          where: { id: trade.id },
+          data: { 
+            status: 'EXECUTED',
+            executionPrice: executedPrice,
+            quantity: executedQuantity,
+            holdingStartTime: new Date()
+          }
+        });
+        
+        console.log(`✅ Buy trade executed at price: ${executedPrice} (no SL/TP, time-based only)`);
+        
+        // Démarrer la surveillance automatique pour la vente basée sur le temps
+        startAutomaticSellMonitoring(trade.id, {
+          symbol: strategy.symbol,
+          buyPrice: executedPrice,
+          quantity: executedQuantity,
+          stopLoss,
+          takeProfit,
+          holdingDurationMs: holdingDurationMs || 60000,
+          strategyId: strategy.id,
+          buyTime: new Date()
+        });
+      }
       
       // Calculer les frais de trading (0.1%)
       const tradingFees = executedPrice * executedQuantity * 0.001;
       
       console.log(`💰 Trading fees calculated: ${tradingFees}`);
       
-      // Mettre à jour le trade avec les informations d'exécution
-      const updatedTrade = await prisma.trade.update({
-        where: { id: trade.id },
-        data: { 
-          status: 'EXECUTED',
-          executionPrice: executedPrice,
-          quantity: executedQuantity,
-          holdingStartTime: new Date()
-        }
-      });
-
-      console.log(`✅ Buy trade executed successfully at price: ${executedPrice}`);
-
       // Envoyer le feedback d'achat à Diego
       await sendFeedbackToDiego(strategy.id, trade.id, {
         buyPrice: executedPrice,
@@ -153,21 +267,12 @@ app.post('/execute-strategy', async (req, res) => {
         status: 'BOUGHT'
       });
       
-      // Démarrer la surveillance automatique pour la vente
-      startAutomaticSellMonitoring(trade.id, {
-        symbol: strategy.symbol,
-        buyPrice: executedPrice,
-        quantity: executedQuantity,
-        stopLoss,
-        takeProfit,
-        holdingDurationMs: holdingDurationMs || 60000,
-        strategyId: strategy.id,
-        buyTime: new Date()
-      });
-      
       res.json({
-        ...updatedTrade,
-        message: 'Buy order executed, automatic sell monitoring started'
+        ...trade,
+        executionPrice: executedPrice,
+        quantity: executedQuantity,
+        status: 'EXECUTED',
+        message: stopLoss && takeProfit ? 'Buy order executed with OCO protection' : 'Buy order executed with time-based monitoring'
       });
       
     } catch (error) {
@@ -200,6 +305,90 @@ app.post('/execute-strategy', async (req, res) => {
     });
   }
 });
+
+// Fonction pour surveiller les ordres OCO
+function startOCOMonitoring(tradeId: string, monitoringData: SellMonitoringData, ocoOrderId: string): void {
+  console.log(`🎯 Starting OCO monitoring for trade ${tradeId}, OCO order ID: ${ocoOrderId}`);
+  
+  // Vérifier le statut de l'ordre OCO toutes les 10 secondes
+  const ocoCheckInterval = 10000;
+  
+  const monitoringInterval = setInterval(async () => {
+    try {
+      // Vérifier le statut de l'ordre OCO
+      const orderStatus = await binance.orderStatus(monitoringData.symbol, { origClientOrderId: ocoOrderId });
+      
+      if (orderStatus.listOrderStatus === 'ALL_DONE') {
+        console.log(`✅ OCO order completed for trade ${tradeId}`);
+        clearInterval(monitoringInterval);
+        activeSellMonitorings.delete(tradeId);
+        
+        // Déterminer si c'était un stop loss ou take profit
+        const executedOrders = orderStatus.orders.filter((order: any) => order.status === 'FILLED');
+        
+        if (executedOrders.length > 0) {
+          const executedOrder = executedOrders[0];
+          const sellPrice = parseFloat(executedOrder.price);
+          const sellQuantity = parseFloat(executedOrder.executedQty);
+          
+          // Déterminer la raison de la vente
+          const reason = sellPrice <= monitoringData.stopLoss! ? 'STOP_LOSS' : 'TAKE_PROFIT';
+          
+          // Calculer le profit
+          const profit = (sellPrice - monitoringData.buyPrice) * sellQuantity;
+          
+          // Mettre à jour le trade
+          await prisma.trade.update({
+            where: { id: tradeId },
+            data: { 
+              status: 'SOLD',
+              sellPrice: sellPrice,
+              sellReason: reason,
+              profit: Math.round(profit * 100) / 100
+            }
+          });
+          
+          console.log(`✅ OCO sell completed for ${tradeId}: ${profit.toFixed(2)} profit, reason: ${reason}`);
+          
+          // Envoyer le feedback à Diego
+          await sendFeedbackToDiego(monitoringData.strategyId, tradeId, {
+            buyPrice: monitoringData.buyPrice,
+            sellPrice: sellPrice,
+            quantity: sellQuantity,
+            symbol: monitoringData.symbol,
+            status: 'SOLD',
+            profit: profit,
+            reason: reason
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`Error checking OCO status for trade ${tradeId}:`, error);
+    }
+  }, ocoCheckInterval);
+  
+  // Fallback: arrêter après la durée maximale de holding si l'OCO ne s'est pas exécuté
+  const timeoutId = setTimeout(async () => {
+    console.log(`⏰ OCO timeout reached for trade ${tradeId}, cancelling OCO and executing manual sell`);
+    clearInterval(monitoringInterval);
+    
+    try {
+      // Annuler l'ordre OCO
+      await binance.cancelOrder(monitoringData.symbol, { origClientOrderId: ocoOrderId });
+      console.log(`❌ OCO order cancelled for trade ${tradeId}`);
+      
+      // Exécuter une vente manuelle
+      await executeSell(tradeId, monitoringData, 'TIME_LIMIT');
+    } catch (error) {
+      console.error(`Error handling OCO timeout for trade ${tradeId}:`, error);
+    }
+    
+    activeSellMonitorings.delete(tradeId);
+  }, monitoringData.holdingDurationMs);
+  
+  // Stocker l'ID du timeout
+  activeSellMonitorings.set(tradeId, timeoutId);
+}
 
 // Fonction pour démarrer la surveillance automatique de vente
 function startAutomaticSellMonitoring(tradeId: string, monitoringData: SellMonitoringData): void {
@@ -279,12 +468,15 @@ async function executeSell(tradeId: string, monitoringData: SellMonitoringData, 
       activeSellMonitorings.delete(tradeId);
     }
     
+    // Ajuster la quantité de vente selon les règles Binance
+    const adjustedSellQuantity = await getAdjustedQuantity(monitoringData.symbol, monitoringData.quantity);
+    
     // Exécuter la vente sur Binance testnet
-    const sellOrder = await binance.marketSell(monitoringData.symbol, monitoringData.quantity);
+    const sellOrder = await binance.marketSell(monitoringData.symbol, adjustedSellQuantity);
     console.log('✅ Sell order executed on Binance testnet:', sellOrder);
     
     const sellPrice = parseFloat(sellOrder.fills[0].price) || 0;
-    const sellQuantity = parseFloat(sellOrder.executedQty) || monitoringData.quantity;
+    const sellQuantity = parseFloat(sellOrder.executedQty) || adjustedSellQuantity;
     
     // Calculer les frais de trading (0.1%)
     const tradingFees = sellPrice * sellQuantity * 0.001;
@@ -358,6 +550,44 @@ async function sendFeedbackToDiego(strategyId: string, tradeId: string, feedback
   }
 }
 
+// Helper function to get symbol info and adjust quantity
+async function getAdjustedQuantity(symbol: string, quantity: number): Promise<number> {
+  try {
+    // Get exchange info for the symbol
+    const exchangeInfo = await binance.exchangeInfo();
+    const symbolInfo = exchangeInfo.symbols.find((s: any) => s.symbol === symbol);
+    
+    if (!symbolInfo) {
+      console.warn(`Symbol ${symbol} not found in exchange info`);
+      return quantity;
+    }
+    
+    // Find LOT_SIZE filter
+    const lotSizeFilter = symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE');
+    
+    if (lotSizeFilter) {
+      const stepSize = parseFloat(lotSizeFilter.stepSize);
+      const minQty = parseFloat(lotSizeFilter.minQty);
+      
+      // Adjust quantity to comply with step size
+      let adjustedQty = Math.floor(quantity / stepSize) * stepSize;
+      
+      // Make sure it meets minimum quantity
+      if (adjustedQty < minQty) {
+        adjustedQty = minQty;
+      }
+      
+      console.log(`📊 Quantity adjusted for ${symbol}: ${quantity} -> ${adjustedQty} (step: ${stepSize}, min: ${minQty})`);
+      return adjustedQty;
+    }
+    
+    return quantity;
+  } catch (error) {
+    console.error('Error getting exchange info:', error);
+    return quantity;
+  }
+}
+
 // Test database connection on startup
 async function initializeService() {
   try {
@@ -403,3 +633,11 @@ initializeService().then(() => {
     console.log('- Real-time feedback to Diego');
   });
 });
+
+// Fonction pour créer la signature HMAC pour l'authentification Binance
+function createBinanceSignature(queryString: string, secretKey: string): string {
+  return crypto
+    .createHmac('sha256', secretKey)
+    .update(queryString)
+    .digest('hex');
+}

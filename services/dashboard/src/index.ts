@@ -95,7 +95,10 @@ app.get('/api/trades', async (req, res) => {
     const limit = parseInt(req.query.limit as string) || 20;
     const status = req.query.status as string;
     
-    const where = status ? { status } : {};
+    // Exclure les trades échoués par défaut
+    const where = status 
+      ? { status } 
+      : { status: { notIn: ['FAILED', 'SELL_FAILED'] } };
     
     const trades = await prisma.trade.findMany({
       take: limit,
