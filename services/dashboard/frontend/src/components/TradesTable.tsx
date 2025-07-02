@@ -2,10 +2,14 @@ import React from 'react';
 import { Trade } from '../services/api';
 
 interface TradesTableProps {
-  trades: Trade[];
+  trades?: Trade[];
+  onViewAll?: () => void;
 }
 
-const TradesTable: React.FC<TradesTableProps> = ({ trades }) => {
+const TradesTable: React.FC<TradesTableProps> = ({ trades = [], onViewAll }) => {
+  // Protection supplémentaire contre les valeurs undefined
+  const safeTrades = Array.isArray(trades) ? trades : [];
+  
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('fr-FR', {
       month: 'short',
@@ -26,25 +30,16 @@ const TradesTable: React.FC<TradesTableProps> = ({ trades }) => {
     return <span className={color}>${profit.toFixed(2)}</span>;
   };
 
-  const getSellReasonBadge = (reason?: string) => {
-    if (!reason) return '-';
-    const baseClasses = "px-2 py-1 rounded-full text-xs font-medium";
-    switch (reason) {
-      case 'STOP_LOSS':
-        return <span className={`${baseClasses} bg-red-100 text-red-800`}>Stop Loss</span>;
-      case 'TAKE_PROFIT':
-        return <span className={`${baseClasses} bg-green-100 text-green-800`}>Take Profit</span>;
-      case 'TIME_LIMIT':
-        return <span className={`${baseClasses} bg-blue-100 text-blue-800`}>Temps Écoulé</span>;
-      default:
-        return <span className={`${baseClasses} bg-gray-100 text-gray-800`}>{reason}</span>;
-    }
-  };
-
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200">
+    <div className="bg-white rounded-lg shadow-md mt-8">
+      <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-900">Trades Récents</h3>
+        <button 
+          onClick={onViewAll}
+          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+        >
+          Voir tout →
+        </button>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
@@ -66,15 +61,12 @@ const TradesTable: React.FC<TradesTableProps> = ({ trades }) => {
                 Prix de Vente
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Raison de Vente
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Profit
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {trades.map((trade) => (
+            {safeTrades.map((trade) => (
               <tr key={trade.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {formatDate(trade.createdAt)}
@@ -92,9 +84,6 @@ const TradesTable: React.FC<TradesTableProps> = ({ trades }) => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {formatPrice(trade.sellPrice)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {getSellReasonBadge(trade.sellReason)}
-                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   {formatProfit(trade.profit)}
                 </td>
@@ -102,7 +91,7 @@ const TradesTable: React.FC<TradesTableProps> = ({ trades }) => {
             ))}
           </tbody>
         </table>
-        {trades.length === 0 && (
+        {safeTrades.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             Aucun trade trouvé
           </div>

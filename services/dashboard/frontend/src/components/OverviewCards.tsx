@@ -14,22 +14,22 @@ const OverviewCards: React.FC<OverviewCardsProps> = ({ overview }) => {
       icon: '📊'
     },
     {
-      title: 'Total Trades',
-      value: overview.totalTrades,
-      color: 'bg-green-500',
-      icon: '💹'
-    },
-    {
-      title: 'Success Rate',
-      value: `${overview.successRate}%`,
-      color: 'bg-yellow-500',
-      icon: '🎯'
-    },
-    {
       title: 'Total Profit',
       value: `$${overview.totalProfit.toFixed(2)}`,
       color: overview.totalProfit >= 0 ? 'bg-emerald-500' : 'bg-red-500',
-      icon: '💰'
+      icon: '�'
+    },
+    {
+      title: 'Active Trades',
+      value: overview.activeTrades,
+      color: 'bg-orange-500',
+      icon: '🔄'
+    },
+    {
+      title: 'Monitored Trades',
+      value: overview.monitoredTrades,
+      color: 'bg-purple-500',
+      icon: '�️'
     }
   ];
 

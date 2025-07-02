@@ -4,9 +4,6 @@ const API_BASE_URL = process.env.NODE_ENV === 'production'
 
 export interface Overview {
   totalStrategies: number;
-  totalTrades: number;
-  successfulTrades: number;
-  successRate: number;
   totalProfit: number;
   activeTrades: number;
   monitoredTrades: number;
@@ -19,9 +16,6 @@ export interface Strategy {
   timeframe: string;
   parameters: any;
   confidence: number;
-  tradesCount: number;
-  successfulTrades: number;
-  totalProfit: number;
 }
 
 export interface Trade {
@@ -76,6 +70,14 @@ export interface SymbolStats {
   avgProfit: number;
 }
 
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export const dashboardApi = {
   async getOverview(): Promise<Overview> {
     const response = await fetch(`${API_BASE_URL}/api/overview`);
@@ -89,13 +91,13 @@ export const dashboardApi = {
     return response.json();
   },
 
-  async getStrategies(limit = 10): Promise<Strategy[]> {
+  async getStrategies(limit = 10): Promise<PaginatedResponse<Strategy>> {
     const response = await fetch(`${API_BASE_URL}/api/strategies?limit=${limit}`);
     if (!response.ok) throw new Error('Failed to fetch strategies');
     return response.json();
   },
 
-  async getTrades(limit = 20, status?: string): Promise<Trade[]> {
+  async getTrades(limit = 20, status?: string): Promise<PaginatedResponse<Trade>> {
     const url = status 
       ? `${API_BASE_URL}/api/trades?limit=${limit}&status=${status}`
       : `${API_BASE_URL}/api/trades?limit=${limit}`;

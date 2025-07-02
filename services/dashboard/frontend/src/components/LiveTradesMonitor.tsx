@@ -15,14 +15,18 @@ interface Trade {
 }
 
 interface LiveTradesMonitorProps {
-  trades: Trade[];
+  trades?: Trade[];
   activeSellMonitorings?: string[];
 }
 
-const LiveTradesMonitor: React.FC<LiveTradesMonitorProps> = ({ trades, activeSellMonitorings = [] }) => {
-  const activeTrades = trades.filter(t => t.status === 'EXECUTED' && !['SOLD', 'SELL_FAILED'].includes(t.status));
-  const completedTrades = trades.filter(t => ['SOLD', 'SELL_FAILED'].includes(t.status));
-  const failedTrades = trades.filter(t => t.status === 'FAILED');
+const LiveTradesMonitor: React.FC<LiveTradesMonitorProps> = ({ trades = [], activeSellMonitorings = [] }) => {
+  // Protection supplémentaire contre les valeurs undefined
+  const safeTrades = Array.isArray(trades) ? trades : [];
+  const safeActiveSellMonitorings = Array.isArray(activeSellMonitorings) ? activeSellMonitorings : [];
+  
+  const activeTrades = safeTrades.filter(t => t.status === 'EXECUTED' && !['SOLD', 'SELL_FAILED'].includes(t.status));
+  const completedTrades = safeTrades.filter(t => ['SOLD', 'SELL_FAILED'].includes(t.status));
+  const failedTrades = safeTrades.filter(t => t.status === 'FAILED');
 
   const getStatusColor = (status: string) => {
     switch (status) {

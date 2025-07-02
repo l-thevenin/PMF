@@ -25,10 +25,8 @@ app.use(express.static(path.join(__dirname, '../frontend/build')));
 // Get dashboard overview
 app.get('/api/overview', async (req, res) => {
   try {
-    const [totalStrategies, totalTrades, successfulTrades, totalProfit, activeTrades, monitoredTrades] = await Promise.all([
+    const [totalStrategies, totalProfit, activeTrades, monitoredTrades] = await Promise.all([
       prisma.strategy.count(),
-      prisma.trade.count(),
-      prisma.trade.count({ where: { status: 'EXECUTED' } }),
       prisma.trade.aggregate({
         _sum: { profit: true },
         where: { profit: { not: null } }
@@ -42,13 +40,8 @@ app.get('/api/overview', async (req, res) => {
       })
     ]);
 
-    const successRate = totalTrades > 0 ? (successfulTrades / totalTrades) * 100 : 0;
-
     res.json({
       totalStrategies,
-      totalTrades,
-      successfulTrades,
-      successRate: Math.round(successRate * 100) / 100,
       totalProfit: totalProfit._sum.profit || 0,
       activeTrades,
       monitoredTrades
@@ -63,26 +56,25 @@ app.get('/api/overview', async (req, res) => {
 app.get('/api/strategies', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
-    const strategies = await prisma.strategy.findMany({
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        trades: {
-          select: {
-            id: true,
-            status: true,
-            profit: true
-          }
-        }
-      }
-    });    const strategiesWithStats = strategies.map((strategy: any) => ({
-      ...strategy,
-      tradesCount: strategy.trades.length,
-      successfulTrades: strategy.trades.filter((t: any) => t.status === 'EXECUTED').length,
-      totalProfit: strategy.trades.reduce((sum: number, trade: any) => sum + (trade.profit || 0), 0)
-    }));
+    const page = parseInt(req.query.page as string) || 1;
+    const offset = (page - 1) * limit;
+    
+    const [strategies, total] = await Promise.all([
+      prisma.strategy.findMany({
+        skip: offset,
+        take: limit,
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.strategy.count()
+    ]);
 
-    res.json(strategiesWithStats);
+    res.json({
+      data: strategies,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
   } catch (error) {
     console.error('Error fetching strategies:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -93,138 +85,44 @@ app.get('/api/strategies', async (req, res) => {
 app.get('/api/trades', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 20;
+    const page = parseInt(req.query.page as string) || 1;
     const status = req.query.status as string;
+    const offset = (page - 1) * limit;
     
     // Exclure les trades échoués par défaut
     const where = status 
       ? { status } 
       : { status: { notIn: ['FAILED', 'SELL_FAILED'] } };
     
-    const trades = await prisma.trade.findMany({
-      take: limit,
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        strategy: {
-          select: {
-            id: true,
-            symbol: true,
-            timeframe: true,
-            confidence: true
+    const [trades, total] = await Promise.all([
+      prisma.trade.findMany({
+        skip: offset,
+        take: limit,
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          strategy: {
+            select: {
+              id: true,
+              symbol: true,
+              timeframe: true,
+              confidence: true
+            }
           }
         }
-      }
-    });
-
-    res.json(trades);
-  } catch (error) {
-    console.error('Error fetching trades:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get performance statistics
-app.get('/api/performance', async (req, res) => {
-  try {
-    const days = parseInt(req.query.days as string) || 7;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
-    const trades = await prisma.trade.findMany({
-      where: {
-        createdAt: { gte: startDate }
-      },
-      orderBy: { createdAt: 'asc' }
-    });
-
-    // Group trades by day
-    const dailyStats = trades.reduce((acc: Record<string, any>, trade: any) => {
-      const date = trade.createdAt.toISOString().split('T')[0];
-      if (!acc[date]) {
-        acc[date] = {
-          date,
-          trades: 0,
-          successful: 0,
-          profit: 0
-        };
-      }
-      acc[date].trades += 1;
-      if (trade.status === 'EXECUTED') {
-        acc[date].successful += 1;
-      }
-      acc[date].profit += trade.profit || 0;
-      return acc;
-    }, {} as Record<string, any>);
-
-    res.json(Object.values(dailyStats));
-  } catch (error) {
-    console.error('Error fetching performance:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get trades by symbol
-app.get('/api/trades-by-symbol', async (req, res) => {
-  try {
-    const trades = await prisma.trade.groupBy({
-      by: ['symbol'],
-      _count: { _all: true },
-      _sum: { profit: true },
-      _avg: { profit: true }
-    });
-
-    const symbolStats = trades.map((trade: any) => ({
-      symbol: trade.symbol,
-      count: trade._count._all,
-      totalProfit: trade._sum.profit || 0,
-      avgProfit: trade._avg.profit || 0
-    }));
-
-    res.json(symbolStats);
-  } catch (error) {
-    console.error('Error fetching trades by symbol:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get workflow status (Pedro stats + active monitorings)
-app.get('/api/workflow-status', async (req, res) => {
-  try {
-    // Mock Pedro stats for now - in a real implementation, this would query Pedro's status
-    const pedroStats = {
-      totalRuns: 0,
-      successfulRuns: 0,
-      failedRuns: 0,
-      lastRunTime: null,
-      lastSuccessTime: null,
-      lastErrorTime: null,
-      lastError: null,
-      isActive: false
-    };
-
-    // Get active sell monitorings (trades currently being monitored)
-    const activeMonitorings = await prisma.trade.findMany({
-      where: { 
-        status: 'EXECUTED',
-        sellPrice: null // Trades not yet sold
-      },
-      select: {
-        id: true,
-        symbol: true,
-        holdingStartTime: true
-      }
-    });
-
-    const activeSellMonitorings = activeMonitorings.map(trade => 
-      `${trade.symbol} (${trade.id.slice(0, 8)}...)`
-    );
+      }),
+      prisma.trade.count({ where })
+    ]);
 
     res.json({
-      pedroStats,
-      activeSellMonitorings
+      data: trades,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
     });
   } catch (error) {
-    console.error('Error fetching workflow status:', error);
+    console.error('Error fetching trades:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
