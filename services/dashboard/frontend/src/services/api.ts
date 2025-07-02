@@ -8,12 +8,14 @@ export interface Overview {
   successfulTrades: number;
   successRate: number;
   totalProfit: number;
+  activeTrades: number;
+  monitoredTrades: number;
 }
 
 export interface Strategy {
   id: string;
   createdAt: string;
-  symbol: string;
+  symbol: string;  
   timeframe: string;
   parameters: any;
   confidence: number;
@@ -32,7 +34,10 @@ export interface Trade {
   quantity: number;
   status: string;
   executionPrice?: number;
+  sellPrice?: number;
   profit?: number;
+  holdingStartTime?: string;
+  sellReason?: string;
   strategy: {
     id: string;
     symbol: string;
@@ -48,6 +53,22 @@ export interface PerformanceData {
   profit: number;
 }
 
+export interface PedroStats {
+  totalRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  lastRunTime: string | null;
+  lastSuccessTime: string | null;
+  lastErrorTime: string | null;
+  lastError: string | null;
+  isActive: boolean;
+}
+
+export interface WorkflowStatus {
+  pedroStats: PedroStats;
+  activeSellMonitorings: string[];
+}
+
 export interface SymbolStats {
   symbol: string;
   count: number;
@@ -59,6 +80,12 @@ export const dashboardApi = {
   async getOverview(): Promise<Overview> {
     const response = await fetch(`${API_BASE_URL}/api/overview`);
     if (!response.ok) throw new Error('Failed to fetch overview');
+    return response.json();
+  },
+
+  async getWorkflowStatus(): Promise<WorkflowStatus> {
+    const response = await fetch(`${API_BASE_URL}/api/workflow-status`);
+    if (!response.ok) throw new Error('Failed to fetch workflow status');
     return response.json();
   },
 

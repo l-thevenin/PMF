@@ -25,13 +25,20 @@ app.use(express.static(path.join(__dirname, '../frontend/build')));
 // Get dashboard overview
 app.get('/api/overview', async (req, res) => {
   try {
-    const [totalStrategies, totalTrades, successfulTrades, totalProfit] = await Promise.all([
+    const [totalStrategies, totalTrades, successfulTrades, totalProfit, activeTrades, monitoredTrades] = await Promise.all([
       prisma.strategy.count(),
       prisma.trade.count(),
       prisma.trade.count({ where: { status: 'EXECUTED' } }),
       prisma.trade.aggregate({
         _sum: { profit: true },
         where: { profit: { not: null } }
+      }),
+      prisma.trade.count({ where: { status: 'PENDING' } }),
+      prisma.trade.count({ 
+        where: { 
+          status: 'EXECUTED',
+          sellPrice: null // Trades en cours de surveillance
+        } 
       })
     ]);
 
@@ -42,7 +49,9 @@ app.get('/api/overview', async (req, res) => {
       totalTrades,
       successfulTrades,
       successRate: Math.round(successRate * 100) / 100,
-      totalProfit: totalProfit._sum.profit || 0
+      totalProfit: totalProfit._sum.profit || 0,
+      activeTrades,
+      monitoredTrades
     });
   } catch (error) {
     console.error('Error fetching overview:', error);
@@ -171,6 +180,48 @@ app.get('/api/trades-by-symbol', async (req, res) => {
     res.json(symbolStats);
   } catch (error) {
     console.error('Error fetching trades by symbol:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get workflow status (Pedro stats + active monitorings)
+app.get('/api/workflow-status', async (req, res) => {
+  try {
+    // Mock Pedro stats for now - in a real implementation, this would query Pedro's status
+    const pedroStats = {
+      totalRuns: 0,
+      successfulRuns: 0,
+      failedRuns: 0,
+      lastRunTime: null,
+      lastSuccessTime: null,
+      lastErrorTime: null,
+      lastError: null,
+      isActive: false
+    };
+
+    // Get active sell monitorings (trades currently being monitored)
+    const activeMonitorings = await prisma.trade.findMany({
+      where: { 
+        status: 'EXECUTED',
+        sellPrice: null // Trades not yet sold
+      },
+      select: {
+        id: true,
+        symbol: true,
+        holdingStartTime: true
+      }
+    });
+
+    const activeSellMonitorings = activeMonitorings.map(trade => 
+      `${trade.symbol} (${trade.id.slice(0, 8)}...)`
+    );
+
+    res.json({
+      pedroStats,
+      activeSellMonitorings
+    });
+  } catch (error) {
+    console.error('Error fetching workflow status:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

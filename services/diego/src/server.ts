@@ -180,5 +180,45 @@ export async function createServer(config: ServerConfig): Promise<express.Applic
     }
   });
 
+  // Endpoint pour recevoir le feedback de Miguel
+  app.post('/feedback', async (req: Request, res: Response) => {
+    try {
+      const { strategyId, tradeId, buyPrice, sellPrice, quantity, symbol, status, profit } = req.body;
+      
+      console.log(`📊 Received feedback from Miguel for strategy ${strategyId}:`, {
+        symbol,
+        buyPrice,
+        sellPrice,
+        quantity,
+        profit,
+        status
+      });
+
+      // Sauvegarder le feedback dans la base de données
+      const feedback = await config.prisma.tradeFeedback.create({
+        data: {
+          tradeId: tradeId,
+          strategyId: strategyId, // String, pas parseInt
+          symbol,
+          buyPrice: parseFloat(buyPrice),
+          sellPrice: sellPrice ? parseFloat(sellPrice) : null,
+          quantity: parseFloat(quantity),
+          profit: profit ? parseFloat(profit) : null,
+          status
+        }
+      });
+
+      console.log(`💾 Trade feedback saved with ID: ${feedback.id}`);
+      
+      res.json({ success: true, feedbackId: feedback.id });
+    } catch (error) {
+      console.error('Error saving trade feedback:', error);
+      res.status(500).json({ 
+        error: 'Failed to save trade feedback',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   return app;
 }

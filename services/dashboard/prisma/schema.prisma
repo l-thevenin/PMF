@@ -19,15 +19,18 @@ model Strategy {
 }
 
 model Trade {
-  id             String    @id @default(uuid())
-  createdAt      DateTime  @default(now())
-  strategyId     String
-  symbol         String
-  type           String    // BUY or SELL
-  price          Float
-  quantity       Float
-  status         String    // PENDING, EXECUTED, FAILED
-  executionPrice Float?
-  profit         Float?
-  strategy       Strategy  @relation(fields: [strategyId], references: [id])
+  id                String    @id @default(uuid())
+  createdAt         DateTime  @default(now())
+  strategyId        String
+  symbol            String
+  type              String    // BUY or SELL
+  price             Float
+  quantity          Float
+  status            String    // PENDING, EXECUTED, FAILED, SOLD, SELL_FAILED
+  executionPrice    Float?
+  sellPrice         Float?
+  sellReason        String?   // STOP_LOSS, TAKE_PROFIT, TIME_LIMIT
+  profit            Float?
+  holdingStartTime  DateTime?
+  strategy          Strategy  @relation(fields: [strategyId], references: [id])
 }

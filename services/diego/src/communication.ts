@@ -8,7 +8,10 @@ export async function notifyMiguel(strategy: Strategy): Promise<void> {
     console.log(`Notifying Miguel about strategy ${strategy.id} for ${strategy.symbol}`);
     
     const response = await axios.post(`${MIGUEL_SERVICE_URL}/execute-strategy`, 
-      { strategyId: strategy.id },
+      { 
+        strategyId: strategy.id,
+        holdingDurationMs: parseInt(process.env.HOLDING_DURATION_MS || '60000')
+      },
       { 
         timeout: 10000,
         headers: {

@@ -1,8 +1,20 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import Binance from 'node-binance-api';
-import { Strategy, StrategyParameters, Trade } from '@pmf/shared';
+import { Strategy, StrategyParameters, Trade, TradeResult } from '@pmf/shared';
 import axios from 'axios';
+import fetch from 'node-fetch';
+
+// Interface for Portfolio API responses
+interface PortfolioCanBuyResponse {
+  canBuy: boolean;
+  reason?: string;
+}
+
+interface PortfolioCanSellResponse {
+  canSell: boolean;
+  reason?: string;
+}
 
 // Interface pour les données de surveillance de vente
 interface SellMonitoringData {
@@ -22,7 +34,8 @@ const prisma = new PrismaClient();
 const app = express();
 app.use(express.json());
 
-// Services URLs - Portfolio service removed for simplification
+// Services URLs
+const PORTFOLIO_SERVICE_URL = process.env.PORTFOLIO_SERVICE_URL || 'http://portfolio:3003';
 
 // CORS middleware for development
 app.use((req, res, next) => {
@@ -103,6 +116,16 @@ app.post('/execute-strategy', async (req, res) => {
       console.log(`Ignoring ${action} signal - only processing BUY signals`);
       return res.json({ message: 'Strategy ignored - only processing BUY signals' });
     }
+    
+    // Vérifier le portefeuille avant d'exécuter le trade
+    const portfolioCheck = await checkPortfolioBeforeTrade(action, strategy.symbol, quantity, price);
+    
+    if (!portfolioCheck.allowed) {
+      return res.status(400).json({ 
+        error: 'Portfolio check failed',
+        reason: portfolioCheck.reason || 'Unknown reason'
+      });
+    }
 
     // Créer un nouveau trade dans la base de données
     const trade = await prisma.trade.create({
@@ -130,7 +153,18 @@ app.post('/execute-strategy', async (req, res) => {
       // Calculer les frais de trading (0.1%)
       const tradingFees = executedPrice * executedQuantity * 0.001;
       
-      console.log(`💰 Trading fees calculated: ${tradingFees}`);
+      // Exécuter le trade dans le service Portfolio
+      const portfolioResult = await executeTradeInPortfolio({
+        symbol: strategy.symbol,
+        type: 'BUY',
+        quantity: executedQuantity,
+        price: executedPrice,
+        fees: tradingFees
+      });
+      
+      if (!portfolioResult.success) {
+        throw new Error(`Portfolio execution failed: ${portfolioResult.message}`);
+      }
       
       // Mettre à jour le trade avec les informations d'exécution
       const updatedTrade = await prisma.trade.update({
@@ -138,8 +172,7 @@ app.post('/execute-strategy', async (req, res) => {
         data: { 
           status: 'EXECUTED',
           executionPrice: executedPrice,
-          quantity: executedQuantity,
-          holdingStartTime: new Date()
+          quantity: executedQuantity
         }
       });
 
@@ -289,7 +322,18 @@ async function executeSell(tradeId: string, monitoringData: SellMonitoringData, 
     // Calculer les frais de trading (0.1%)
     const tradingFees = sellPrice * sellQuantity * 0.001;
     
-    console.log(`💰 Sell trading fees calculated: ${tradingFees}`);
+    // Exécuter la vente dans le service Portfolio
+    const portfolioResult = await executeTradeInPortfolio({
+      symbol: monitoringData.symbol,
+      type: 'SELL',
+      quantity: sellQuantity,
+      price: sellPrice,
+      fees: tradingFees
+    });
+    
+    if (!portfolioResult.success) {
+      console.error(`Portfolio sell execution failed: ${portfolioResult.message}`);
+    }
     
     // Calculer le profit/perte
     const profit = (sellPrice - monitoringData.buyPrice) * sellQuantity - (tradingFees * 2); // Frais d'achat et de vente
@@ -299,8 +343,6 @@ async function executeSell(tradeId: string, monitoringData: SellMonitoringData, 
       where: { id: tradeId },
       data: { 
         status: 'SOLD',
-        sellPrice: sellPrice,
-        sellReason: reason,
         profit: Math.round(profit * 100) / 100 // Arrondir à 2 décimales
       }
     });
@@ -324,10 +366,7 @@ async function executeSell(tradeId: string, monitoringData: SellMonitoringData, 
     // Marquer le trade comme échoué
     await prisma.trade.update({
       where: { id: tradeId },
-      data: { 
-        status: 'SELL_FAILED',
-        sellReason: 'SELL_ERROR'
-      }
+      data: { status: 'SELL_FAILED' }
     });
     
     // Envoyer le feedback d'échec à Diego
@@ -337,6 +376,35 @@ async function executeSell(tradeId: string, monitoringData: SellMonitoringData, 
       symbol: monitoringData.symbol,
       status: 'SELL_FAILED'
     });
+  }
+}
+
+// Helper function to execute trade in Portfolio service
+async function executeTradeInPortfolio(tradeData: {
+  symbol: string;
+  type: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  fees?: number;
+}): Promise<TradeResult> {
+  try {
+    const response = await fetch(`${PORTFOLIO_SERVICE_URL}/portfolio/execute-trade`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(tradeData)
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Portfolio service error (${response.status}): ${errorData}`);
+    }
+    
+    return await response.json() as TradeResult;
+  } catch (error) {
+    console.error('Error executing trade in portfolio:', error);
+    throw error;
   }
 }
 
@@ -355,6 +423,33 @@ async function sendFeedbackToDiego(strategyId: string, tradeId: string, feedback
   } catch (error) {
     console.error('Error sending feedback to Diego:', error);
     // Don't throw error as this is not critical for the main operation
+  }
+}
+
+// Fonction pour vérifier le portefeuille avant d'exécuter un trade
+async function checkPortfolioBeforeTrade(action: string, symbol: string, quantity: number, price: number): Promise<{ allowed: boolean; reason?: string }> {
+  try {
+    if (action === 'BUY') {
+      const amount = quantity * price;
+      const response = await fetch(`${PORTFOLIO_SERVICE_URL}/portfolio/can-buy?amount=${amount}`);
+      const data = await response.json() as PortfolioCanBuyResponse;
+      return {
+        allowed: data.canBuy,
+        reason: data.reason
+      };
+    } else if (action === 'SELL') {
+      const response = await fetch(`${PORTFOLIO_SERVICE_URL}/portfolio/can-sell/${symbol}?quantity=${quantity}`);
+      const data = await response.json() as PortfolioCanSellResponse;
+      return {
+        allowed: data.canSell,
+        reason: data.reason
+      };
+    }
+    
+    return { allowed: false, reason: 'Unknown action' };
+  } catch (error) {
+    console.error('⚠️ [MIGUEL] Erreur vérification portefeuille:', error);
+    return { allowed: false, reason: 'Portfolio check failed' };
   }
 }
 

@@ -6,20 +6,6 @@ interface TradesTableProps {
 }
 
 const TradesTable: React.FC<TradesTableProps> = ({ trades }) => {
-  const getStatusBadge = (status: string) => {
-    const baseClasses = "px-2 py-1 rounded-full text-xs font-medium";
-    switch (status) {
-      case 'PENDING':
-        return `${baseClasses} bg-yellow-100 text-yellow-800`;
-      case 'EXECUTED':
-        return `${baseClasses} bg-green-100 text-green-800`;
-      case 'FAILED':
-        return `${baseClasses} bg-red-100 text-red-800`;
-      default:
-        return `${baseClasses} bg-gray-100 text-gray-800`;
-    }
-  };
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('fr-FR', {
       month: 'short',
@@ -29,10 +15,30 @@ const TradesTable: React.FC<TradesTableProps> = ({ trades }) => {
     });
   };
 
+  const formatPrice = (price?: number) => {
+    if (price === null || price === undefined) return '-';
+    return `$${price.toFixed(4)}`;
+  };
+
   const formatProfit = (profit?: number) => {
     if (profit === null || profit === undefined) return '-';
     const color = profit >= 0 ? 'text-green-600' : 'text-red-600';
     return <span className={color}>${profit.toFixed(2)}</span>;
+  };
+
+  const getSellReasonBadge = (reason?: string) => {
+    if (!reason) return '-';
+    const baseClasses = "px-2 py-1 rounded-full text-xs font-medium";
+    switch (reason) {
+      case 'STOP_LOSS':
+        return <span className={`${baseClasses} bg-red-100 text-red-800`}>Stop Loss</span>;
+      case 'TAKE_PROFIT':
+        return <span className={`${baseClasses} bg-green-100 text-green-800`}>Take Profit</span>;
+      case 'TIME_LIMIT':
+        return <span className={`${baseClasses} bg-blue-100 text-blue-800`}>Temps Écoulé</span>;
+      default:
+        return <span className={`${baseClasses} bg-gray-100 text-gray-800`}>{reason}</span>;
+    }
   };
 
   return (
@@ -51,22 +57,19 @@ const TradesTable: React.FC<TradesTableProps> = ({ trades }) => {
                 Symbole
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Type
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Prix
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Quantité
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
+                Prix d'Achat
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Prix de Vente
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Raison de Vente
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Profit
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Confiance
               </th>
             </tr>
           </thead>
@@ -80,29 +83,20 @@ const TradesTable: React.FC<TradesTableProps> = ({ trades }) => {
                   <div className="text-sm font-medium text-gray-900">{trade.symbol}</div>
                   <div className="text-sm text-gray-500">{trade.strategy.timeframe}</div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                    trade.type === 'BUY' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
-                  }`}>
-                    {trade.type}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  ${trade.price.toFixed(4)}
-                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {trade.quantity.toFixed(6)}
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {formatPrice(trade.executionPrice)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {formatPrice(trade.sellPrice)}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={getStatusBadge(trade.status)}>
-                    {trade.status}
-                  </span>
+                  {getSellReasonBadge(trade.sellReason)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   {formatProfit(trade.profit)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {(trade.strategy.confidence * 100).toFixed(1)}%
                 </td>
               </tr>
             ))}

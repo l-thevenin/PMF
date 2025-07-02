@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { dashboardApi, Overview, Strategy, Trade, PerformanceData } from './services/api';
+import { dashboardApi, Overview, Strategy, Trade, WorkflowStatus as WorkflowStatusData } from './services/api';
 import OverviewCards from './components/OverviewCards';
-import PerformanceChart from './components/PerformanceChart';
+import TradingMetrics from './components/TradingMetrics';
 import TradesTable from './components/TradesTable';
 import StrategiesList from './components/StrategiesList';
+import WorkflowStatus from './components/WorkflowStatus';
+import LiveTradesMonitor from './components/LiveTradesMonitor';
 import './index.css';
 
 function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [performance, setPerformance] = useState<PerformanceData[]>([]);
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
@@ -18,17 +20,17 @@ function App() {
   const loadData = async () => {
     try {
       setError(null);
-      const [overviewData, strategiesData, tradesData, performanceData] = await Promise.all([
+      const [overviewData, strategiesData, tradesData, workflowData] = await Promise.all([
         dashboardApi.getOverview(),
         dashboardApi.getStrategies(5),
         dashboardApi.getTrades(15),
-        dashboardApi.getPerformance(7)
+        dashboardApi.getWorkflowStatus().catch(() => null) // Graceful fallback si l'endpoint n'existe pas encore
       ]);
 
       setOverview(overviewData);
       setStrategies(strategiesData);
       setTrades(tradesData);
-      setPerformance(performanceData);
+      setWorkflowStatus(workflowData);
     } catch (err) {
       setError('Erreur lors du chargement des données');
       console.error('Error loading data:', err);
@@ -120,56 +122,27 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {overview && (
           <>
+            {/* Workflow Status */}
+            <WorkflowStatus 
+              pedroStats={workflowStatus?.pedroStats}
+              activeTrades={overview.activeTrades}
+              monitoredTrades={overview.monitoredTrades}
+            />
+
             {/* Overview Cards */}
             <OverviewCards overview={overview} />
 
-            {/* Performance Chart */}
-            {performance.length > 0 && (
-              <PerformanceChart data={performance} />
-            )}
+            {/* Live Trades Monitor */}
+            <LiveTradesMonitor 
+              trades={trades}
+              activeSellMonitorings={workflowStatus?.activeSellMonitorings || []}
+            />
 
-            {/* Grid Layout for Strategies and Trades */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-              {/* Strategies */}
-              <StrategiesList strategies={strategies} />
+            {/* Trading Metrics */}
+            <TradingMetrics trades={trades} />
 
-              {/* Recent Trades Summary */}
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Résumé des Trades</h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-600">Trades en cours</span>
-                    <span className="text-lg font-semibold text-yellow-600">
-                      {trades.filter(t => t.status === 'PENDING').length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-600">Trades exécutés</span>
-                    <span className="text-lg font-semibold text-green-600">
-                      {trades.filter(t => t.status === 'EXECUTED').length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-600">Trades échoués</span>
-                    <span className="text-lg font-semibold text-red-600">
-                      {trades.filter(t => t.status === 'FAILED').length}
-                    </span>
-                  </div>
-                  <div className="pt-4 border-t border-gray-200">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-600">Profit total récent</span>
-                      <span className={`text-lg font-semibold ${
-                        trades.reduce((sum, t) => sum + (t.profit || 0), 0) >= 0 
-                          ? 'text-green-600' 
-                          : 'text-red-600'
-                      }`}>
-                        ${trades.reduce((sum, t) => sum + (t.profit || 0), 0).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            {/* Strategies */}
+            <StrategiesList strategies={strategies} />
 
             {/* Trades Table */}
             <TradesTable trades={trades} />

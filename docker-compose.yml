@@ -1,17 +1,4 @@
-version: '3.8'
-
 services:
-  test:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
-    environment:
-      DATABASE_URL: postgresql://trading:tradingpass@db:5432/tradingbot
-      NODE_ENV: test
-    depends_on:
-      db:
-        condition: service_healthy
-
   db:
     image: postgres:latest
     environment:

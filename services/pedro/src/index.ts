@@ -13,6 +13,7 @@ interface SchedulerConfig {
   retryDelayMs: number;
   symbols: string[];
   timeframes: string[];
+  holdingDurationMs: number; // Durée de holding en millisecondes
 }
 
 interface AnalysisResponse {
@@ -50,7 +51,8 @@ class PedroScheduler {
         'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 'LINKUSDT', 
         'LTCUSDT', 'XRPUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT'
       ],
-      timeframes: process.env.TRADING_TIMEFRAMES ? process.env.TRADING_TIMEFRAMES.split(',') : ['1m', '5m', '15m']
+      timeframes: process.env.TRADING_TIMEFRAMES ? process.env.TRADING_TIMEFRAMES.split(',') : ['1m', '5m', '15m'],
+      holdingDurationMs: parseInt(process.env.HOLDING_DURATION_MS || '60000') // Par défaut 1 minute
     };
 
     this.log('Scheduler initialized with config:', this.config);
