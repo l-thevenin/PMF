@@ -106,7 +106,8 @@ app.get('/api/trades', async (req, res) => {
               id: true,
               symbol: true,
               timeframe: true,
-              confidence: true
+              confidence: true,
+              parameters: true  // ✅ AJOUT DES PARAMÈTRES !
             }
           }
         }

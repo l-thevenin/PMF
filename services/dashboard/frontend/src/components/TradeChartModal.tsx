@@ -1,18 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { binanceApi, PriceData } from '../services/binanceApi';
-
-interface Trade {
-  id: string;
-  symbol: string;
-  createdAt: string;
-  holdingStartTime?: string;
-  sellTime?: string;
-  executionPrice?: number;
-  sellPrice?: number;
-  sellReason?: string;
-  status: string;
-}
+import { Trade } from '../services/api';
 
 interface TradeChartModalProps {
   trade: Trade;
@@ -25,6 +14,20 @@ const TradeChartModal: React.FC<TradeChartModalProps> = ({ trade, onClose, stopL
   const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 🔍 DEBUG: Tracer les valeurs reçues
+  console.log('🔍 TradeChartModal - Props reçues:', {
+    tradeId: trade.id,
+    stopLoss,
+    takeProfit,
+    tradeStrategy: trade.strategy,
+    tradeStrategyParameters: trade.strategy?.parameters
+  });
+
+  // Debug: afficher les valeurs reçues
+  console.log('TradeChartModal - stopLoss:', stopLoss);
+  console.log('TradeChartModal - takeProfit:', takeProfit);
+  console.log('TradeChartModal - trade:', trade);
 
   useEffect(() => {
     const fetchData = async () => {

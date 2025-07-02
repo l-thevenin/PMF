@@ -72,10 +72,26 @@ export const binanceApi = {
     console.log(`- Sell time: ${sellTime ? new Date(endTime).toLocaleString('fr-FR') : 'En cours'}`);
     console.log(`- Trade duration: ${Math.round((endTime - startTime) / 1000)}s`);
     
-    // Récupérer les données exactement sur la période du trade
-    // Utiliser l'intervalle de 1 minute (minimum supporté par Binance)
-    const interval = '1m';
+    // Calculer la durée du trade en minutes
+    const tradeDurationMinutes = (endTime - startTime) / (1000 * 60);
     
+    // Choisir l'intervalle approprié basé sur la durée du trade
+    // Intervalles supportés par Binance: 1s, 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+    let interval = '1s';
+    
+    if (tradeDurationMinutes <= 3) {
+      interval = '1s'; // Pour les trades très courts
+    } else if (tradeDurationMinutes <= 30) {
+      interval = '1m';
+    } else if (tradeDurationMinutes <= 240) {
+      interval = '5m';
+    } else {
+      interval = '15m';
+    }
+    
+    console.log(`Using interval: ${interval} for ${tradeDurationMinutes.toFixed(1)} minute trade`);
+    
+    // Récupérer les données exactement sur la période du trade
     const allData = await this.getKlines(symbol, startTime, endTime, interval);
     
     // Filtrer pour ne garder que les données dans la période exacte du trade

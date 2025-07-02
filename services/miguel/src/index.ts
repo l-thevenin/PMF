@@ -139,39 +139,49 @@ app.post('/execute-strategy', async (req, res) => {
           console.log(`🎯 Creating OCO order for automatic stop loss and take profit management`);
           console.log(`📊 OCO Parameters - SL: ${stopLoss}, TP: ${takeProfit}, Qty: ${executedQuantity}`);
           
-          // Créer un ordre OCO (One-Cancels-Other) selon la documentation officielle Binance
-          const ocoOrderParams = {
+          // Ajuster la quantité pour les ordres OCO selon les règles Binance
+          const adjustedOcoQuantity = await getAdjustedQuantity(strategy.symbol, executedQuantity);
+          
+          console.log(`📊 Adjusted OCO quantity: ${executedQuantity} -> ${adjustedOcoQuantity}`);
+          
+          // Créer un ordre OCO en utilisant l'API REST directement avec la bonne signature
+          const timestamp = Date.now();
+          const ocoParams = {
             symbol: strategy.symbol,
             side: 'SELL',
-            quantity: executedQuantity.toString(),
-            aboveType: 'LIMIT_MAKER', // Take profit (au-dessus du prix actuel)
-            abovePrice: takeProfit.toString(),
-            belowType: 'STOP_LOSS', // Stop loss (en-dessous du prix actuel)
-            belowStopPrice: stopLoss.toString(),
-            newOrderRespType: 'FULL',
-            timestamp: Date.now().toString()
+            quantity: adjustedOcoQuantity.toString(),
+            price: takeProfit.toString(),
+            stopPrice: stopLoss.toString(),
+            stopLimitPrice: stopLoss.toString(),
+            stopLimitTimeInForce: 'GTC',
+            timestamp: timestamp.toString()
           };
 
           // Créer la query string pour la signature
-          const queryString = new URLSearchParams(ocoOrderParams).toString();
-          const signature = createBinanceSignature(queryString, process.env.BINANCE_SECRET_KEY!);
+          const queryString = Object.entries(ocoParams)
+            .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+            .join('&');
           
-          // Ajouter la signature aux paramètres
-          const finalParams = { ...ocoOrderParams, signature };
+          const signature = crypto
+            .createHmac('sha256', process.env.BINANCE_TEST_API_SECRET!)
+            .update(queryString)
+            .digest('hex');
 
-          const ocoOrder = await axios.post(
-            `${process.env.BINANCE_API_URL}/api/v3/orderList/oco`,
-            new URLSearchParams(finalParams),
+          // Ajouter la signature
+          const finalParams = { ...ocoParams, signature };
+
+          const response = await axios.post(
+            'https://testnet.binance.vision/api/v3/order/oco',
+            new URLSearchParams(finalParams).toString(),
             {
               headers: {
-                'X-MBX-APIKEY': process.env.BINANCE_API_KEY,
+                'X-MBX-APIKEY': process.env.BINANCE_TEST_API_KEY!,
                 'Content-Type': 'application/x-www-form-urlencoded'
               }
             }
           );
 
-          const ocoResponse = ocoOrder.data as any;
-          
+          const ocoResponse = response.data as any;
           console.log('✅ OCO order created successfully:', ocoResponse);
           
           // Mettre à jour le trade avec l'ID de l'ordre OCO
@@ -315,8 +325,24 @@ function startOCOMonitoring(tradeId: string, monitoringData: SellMonitoringData,
   
   const monitoringInterval = setInterval(async () => {
     try {
-      // Vérifier le statut de l'ordre OCO
-      const orderStatus = await binance.orderStatus(monitoringData.symbol, { origClientOrderId: ocoOrderId });
+      // Utiliser l'API REST pour vérifier le statut de l'ordre OCO
+      const timestamp = Date.now();
+      const queryString = `orderListId=${ocoOrderId}&timestamp=${timestamp}`;
+      const signature = crypto
+        .createHmac('sha256', process.env.BINANCE_TEST_API_SECRET!)
+        .update(queryString)
+        .digest('hex');
+
+      const response = await axios.get(
+        `https://testnet.binance.vision/api/v3/orderList?${queryString}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': process.env.BINANCE_TEST_API_KEY!
+          }
+        }
+      );
+
+      const orderStatus = response.data as any;
       
       if (orderStatus.listOrderStatus === 'ALL_DONE') {
         console.log(`✅ OCO order completed for trade ${tradeId}`);
@@ -374,8 +400,22 @@ function startOCOMonitoring(tradeId: string, monitoringData: SellMonitoringData,
     clearInterval(monitoringInterval);
     
     try {
-      // Annuler l'ordre OCO
-      await binance.cancelOrder(monitoringData.symbol, { origClientOrderId: ocoOrderId });
+      // Annuler l'ordre OCO avec l'API REST
+      const timestamp = Date.now();
+      const queryString = `symbol=${monitoringData.symbol}&orderListId=${ocoOrderId}&timestamp=${timestamp}`;
+      const signature = crypto
+        .createHmac('sha256', process.env.BINANCE_TEST_API_SECRET!)
+        .update(queryString)
+        .digest('hex');
+
+      await axios.delete(
+        `https://testnet.binance.vision/api/v3/orderList?${queryString}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': process.env.BINANCE_TEST_API_KEY!
+          }
+        }
+      );
       console.log(`❌ OCO order cancelled for trade ${tradeId}`);
       
       // Exécuter une vente manuelle
@@ -636,11 +676,3 @@ initializeService().then(() => {
     console.log('- Real-time feedback to Diego');
   });
 });
-
-// Fonction pour créer la signature HMAC pour l'authentification Binance
-function createBinanceSignature(queryString: string, secretKey: string): string {
-  return crypto
-    .createHmac('sha256', secretKey)
-    .update(queryString)
-    .digest('hex');
-}

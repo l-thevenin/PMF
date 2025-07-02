@@ -57,13 +57,24 @@ const AllTradesPage: React.FC<AllTradesPageProps> = ({ trades = [] }) => {
   // Fonction pour extraire les paramètres de stratégie (stop loss, take profit)
   const getStrategyParams = (trade: Trade) => {
     try {
+      // Debug: afficher les données brutes
+      console.log('Debug - Trade strategy:', trade.strategy);
+      console.log('Debug - Parameters type:', typeof trade.strategy?.parameters);
+      console.log('Debug - Parameters value:', trade.strategy?.parameters);
+      
       // Les paramètres peuvent être dans trade.strategy.parameters ou dans une autre propriété
       const params = trade.strategy?.parameters || (trade as any).parameters;
       if (typeof params === 'string') {
-        return JSON.parse(params);
+        const parsed = JSON.parse(params);
+        console.log('Debug - Parsed parameters:', parsed);
+        console.log('Debug - Stop Loss:', parsed.stopLoss);
+        console.log('Debug - Take Profit:', parsed.takeProfit);
+        return parsed;
       }
+      console.log('Debug - Direct parameters:', params);
       return params || {};
-    } catch {
+    } catch (error) {
+      console.error('Error parsing strategy parameters:', error);
       return {};
     }
   };
