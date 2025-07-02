@@ -53,33 +53,38 @@ export const binanceApi = {
   },
 
   /**
-   * Récupère les données de prix pour la durée d'un trade
+   * Récupère les données de prix pour la durée exacte d'un trade
+   * Utilise les heures exactes d'achat et de vente comme bornes
    * @param symbol - Le symbole du trade
-   * @param tradeStartTime - Début du trade
-   * @param tradeEndTime - Fin du trade (optionnel, utilise l'heure actuelle si absent)
+   * @param buyTime - Heure d'achat exacte (ISO string)
+   * @param sellTime - Heure de vente exacte (ISO string, optionnel)
    */
   async getTradeChartData(
     symbol: string,
-    tradeStartTime: string,
-    tradeEndTime?: string
+    buyTime: string,
+    sellTime?: string
   ): Promise<PriceData[]> {
-    const startTime = new Date(tradeStartTime).getTime();
-    const endTime = tradeEndTime ? new Date(tradeEndTime).getTime() : Date.now();
+    const startTime = new Date(buyTime).getTime();
+    const endTime = sellTime ? new Date(sellTime).getTime() : Date.now();
     
-    // Ajouter une marge de 5 minutes avant le trade pour contexte
-    const marginMs = 5 * 60 * 1000; // 5 minutes
-    const adjustedStartTime = startTime - marginMs;
+    console.log(`Fetching chart data for ${symbol}:`);
+    console.log(`- Buy time: ${new Date(startTime).toLocaleString('fr-FR')}`);
+    console.log(`- Sell time: ${sellTime ? new Date(endTime).toLocaleString('fr-FR') : 'En cours'}`);
+    console.log(`- Trade duration: ${Math.round((endTime - startTime) / 1000)}s`);
     
-    // Choisir l'intervalle basé sur la durée du trade
-    const durationMs = endTime - startTime;
-    let interval = '1m';
+    // Récupérer les données exactement sur la période du trade
+    // Utiliser l'intervalle de 1 minute (minimum supporté par Binance)
+    const interval = '1m';
     
-    if (durationMs > 4 * 60 * 60 * 1000) { // Plus de 4 heures
-      interval = '5m';
-    } else if (durationMs > 24 * 60 * 60 * 1000) { // Plus de 24 heures
-      interval = '15m';
-    }
+    const allData = await this.getKlines(symbol, startTime, endTime, interval);
     
-    return this.getKlines(symbol, adjustedStartTime, endTime, interval);
+    // Filtrer pour ne garder que les données dans la période exacte du trade
+    const filteredData = allData.filter(data => {
+      return data.timestamp >= startTime && data.timestamp <= endTime;
+    });
+    
+    console.log(`Filtered data: ${filteredData.length} points from ${allData.length} total`);
+    
+    return filteredData;
   }
 };

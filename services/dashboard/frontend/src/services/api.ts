@@ -31,6 +31,7 @@ export interface Trade {
   sellPrice?: number;
   profit?: number;
   holdingStartTime?: string;
+  sellTime?: string;
   sellReason?: string;
   strategy: {
     id: string;

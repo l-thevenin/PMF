@@ -7,6 +7,7 @@ interface Trade {
   symbol: string;
   createdAt: string;
   holdingStartTime?: string;
+  sellTime?: string;
   executionPrice?: number;
   sellPrice?: number;
   sellReason?: string;
@@ -31,12 +32,38 @@ const TradeChartModal: React.FC<TradeChartModalProps> = ({ trade, onClose, stopL
         setLoading(true);
         setError(null);
 
-        // Utiliser holdingStartTime ou createdAt comme début
-        const startTime = trade.holdingStartTime || trade.createdAt;
-        // Si le trade est terminé (SOLD), utiliser une estimation de fin, sinon utiliser maintenant
-        const endTime = trade.status === 'SOLD' ? undefined : undefined; // laisser undefined pour "maintenant"
+        // Utiliser holdingStartTime comme heure d'achat exacte
+        const buyTime = trade.holdingStartTime || trade.createdAt;
+        
+        // Utiliser sellTime pour les trades terminés
+        let sellTime = trade.sellTime;
+        
+        // Debug: Inspecter les données du trade
+        console.log('Trade data:', {
+          id: trade.id,
+          status: trade.status,
+          sellReason: trade.sellReason,
+          sellPrice: trade.sellPrice,
+          sellTime: trade.sellTime,
+          buyTime: buyTime
+        });
+        
+        // Si le trade est terminé mais qu'on n'a pas de sellTime, c'est un problème backend
+        if (!sellTime && (trade.status === 'SOLD' || trade.status === 'SELL_FAILED')) {
+          console.error('ERREUR: Trade terminé sans sellTime. Cela devrait être corrigé côté backend après migration de la DB.');
+          // Temporairement, pour la compatibilité avec les anciens trades
+          const buyTimeMs = new Date(buyTime).getTime();
+          const estimatedSellTimeMs = buyTimeMs + (60 * 1000); // 60 secondes
+          sellTime = new Date(estimatedSellTimeMs).toISOString();
+        }
+        
+        console.log('Trade times:', {
+          buyTime: new Date(buyTime).toLocaleString('fr-FR'),
+          sellTime: sellTime ? new Date(sellTime).toLocaleString('fr-FR') : 'En cours',
+          status: trade.status
+        });
 
-        const data = await binanceApi.getTradeChartData(trade.symbol, startTime, endTime);
+        const data = await binanceApi.getTradeChartData(trade.symbol, buyTime, sellTime);
         setPriceData(data);
       } catch (err) {
         console.error('Error fetching price data:', err);
@@ -57,22 +84,72 @@ const TradeChartModal: React.FC<TradeChartModalProps> = ({ trade, onClose, stopL
   };
 
   const formatXAxisLabel = (value: string) => {
-    return value; // déjà formaté par binanceApi
+    return value; // déjà formaté par binanceApi avec plus de précision
   };
 
   // Calculer les points d'achat et de vente
   const buyPoint = trade.executionPrice;
   const sellPoint = trade.sellPrice;
 
+  // Calculer les informations temporelles du trade
+  const buyTime = trade.holdingStartTime || trade.createdAt;
+  let sellTime = trade.sellTime;
+  
+  // Si le trade est terminé mais qu'on n'a pas de sellTime, l'estimer
+  if (!sellTime && (trade.status === 'SOLD' || trade.status === 'SELL_FAILED')) {
+    const buyTimeMs = new Date(buyTime).getTime();
+    const estimatedSellTimeMs = buyTimeMs + (60 * 1000); // 60 secondes
+    sellTime = new Date(estimatedSellTimeMs).toISOString();
+  }
+  
+  const buyDate = new Date(buyTime);
+  const sellDate = sellTime ? new Date(sellTime) : null;
+  
+  const tradeDurationMs = sellDate ? sellDate.getTime() - buyDate.getTime() : Date.now() - buyDate.getTime();
+  const tradeDurationSeconds = Math.round(tradeDurationMs / 1000);
+
+  const formatTradeTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit', 
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
   // Trouver les prix min/max pour ajuster l'échelle
-  const prices = priceData.map(d => d.price);
+  const prices = priceData.map((d: PriceData) => d.price);
+  
+  // S'assurer qu'il y a des données avant de calculer min/max
+  if (prices.length === 0) {
+    return null;
+  }
+  
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
   const priceRange = maxPrice - minPrice;
   const padding = priceRange * 0.1; // 10% de padding
 
-  const yDomainMin = Math.max(0, minPrice - padding);
-  const yDomainMax = maxPrice + padding;
+  // Inclure stop loss et take profit dans le calcul de l'échelle
+  const allPrices = [...prices];
+  if (stopLoss) allPrices.push(stopLoss);
+  if (takeProfit) allPrices.push(takeProfit);
+  if (buyPoint) allPrices.push(buyPoint);
+  if (sellPoint) allPrices.push(sellPoint);
+
+  const finalMinPrice = Math.min(...allPrices);
+  const finalMaxPrice = Math.max(...allPrices);
+  const finalRange = finalMaxPrice - finalMinPrice;
+  const finalPadding = finalRange * 0.15; // 15% de padding pour bien voir les lignes
+
+  const yDomainMin = Math.max(0, finalMinPrice - finalPadding);
+  const yDomainMax = finalMaxPrice + finalPadding;
+
+  // Vérifier si nous avons des données valides
+  if (priceData.length === 0 && !loading && !error) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -89,9 +166,18 @@ const TradeChartModal: React.FC<TradeChartModalProps> = ({ trade, onClose, stopL
                 📈 Évolution du prix - {trade.symbol}
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Trade du {new Date(trade.createdAt).toLocaleString('fr-FR')}
-                {trade.executionPrice && ` • Acheté à $${trade.executionPrice.toFixed(4)}`}
-                {trade.sellPrice && ` • Vendu à $${trade.sellPrice.toFixed(4)}`}
+                🕐 Achat: {formatTradeTime(buyTime)}
+                {sellTime && (
+                  <> • 🕐 Vente: {formatTradeTime(sellTime)}{!trade.sellTime && ' (estimée - ancienne donnée)'}</>
+                )}
+                {!sellTime && trade.status !== 'SOLD' && trade.status !== 'SELL_FAILED' && (
+                  <> • ⏳ En cours</>
+                )}
+                <br />
+                ⏱️ Durée: {tradeDurationSeconds}s
+                {trade.status === 'SOLD' || trade.status === 'SELL_FAILED' ? ' (trade terminé)' : ' (en cours)'}
+                {trade.executionPrice && ` • 💰 Acheté à $${trade.executionPrice.toFixed(4)}`}
+                {trade.sellPrice && ` • 💸 Vendu à $${trade.sellPrice.toFixed(4)}`}
               </p>
             </div>
             <button
@@ -134,32 +220,25 @@ const TradeChartModal: React.FC<TradeChartModalProps> = ({ trade, onClose, stopL
                 <div className="flex flex-wrap items-center gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center">
                     <div className="w-4 h-0.5 bg-blue-500 mr-2"></div>
-                    <span className="text-sm">Prix du marché</span>
+                    <span className="text-sm">Prix du marché pendant le trade</span>
                   </div>
-                  {buyPoint && (
-                    <div className="flex items-center">
-                      <div className="w-4 h-0.5 bg-green-500 mr-2"></div>
-                      <span className="text-sm">Prix d'achat (${buyPoint.toFixed(4)})</span>
-                    </div>
-                  )}
-                  {sellPoint && (
-                    <div className="flex items-center">
-                      <div className="w-4 h-0.5 bg-purple-500 mr-2"></div>
-                      <span className="text-sm">Prix de vente (${sellPoint.toFixed(4)})</span>
-                    </div>
-                  )}
                   {stopLoss && (
                     <div className="flex items-center">
-                      <div className="w-4 h-0.5 bg-red-500 mr-2"></div>
+                      <div className="w-4 h-0.5 bg-red-500 mr-2" style={{borderStyle: 'dashed'}}></div>
                       <span className="text-sm">Stop Loss (${stopLoss.toFixed(4)})</span>
                     </div>
                   )}
                   {takeProfit && (
                     <div className="flex items-center">
-                      <div className="w-4 h-0.5 bg-green-600 mr-2"></div>
+                      <div className="w-4 h-0.5 bg-green-600 mr-2" style={{borderStyle: 'dashed'}}></div>
                       <span className="text-sm">Take Profit (${takeProfit.toFixed(4)})</span>
                     </div>
                   )}
+                  <div className="text-xs text-gray-500">
+                    ⏱️ Période exacte: {formatTradeTime(buyTime)} → {sellTime ? formatTradeTime(sellTime) : 'En cours'}
+                    {sellTime && !trade.sellTime && ' (fin estimée)'}
+                    {trade.status === 'SOLD' || trade.status === 'SELL_FAILED' ? ' • Trade terminé' : ' • Trade en cours'}
+                  </div>
                 </div>
 
                 {/* Graphique */}
@@ -197,29 +276,14 @@ const TradeChartModal: React.FC<TradeChartModalProps> = ({ trade, onClose, stopL
                         activeDot={{ r: 4, stroke: '#3b82f6', strokeWidth: 2 }}
                       />
                       
-                      {/* Lignes de référence */}
-                      {buyPoint && (
-                        <ReferenceLine 
-                          y={buyPoint} 
-                          stroke="#10b981" 
-                          strokeDasharray="5 5"
-                          strokeWidth={2}
-                        />
-                      )}
-                      {sellPoint && (
-                        <ReferenceLine 
-                          y={sellPoint} 
-                          stroke="#8b5cf6" 
-                          strokeDasharray="5 5"
-                          strokeWidth={2}
-                        />
-                      )}
+                      {/* Lignes de référence horizontales (prix seulement) */}
                       {stopLoss && (
                         <ReferenceLine 
                           y={stopLoss} 
                           stroke="#ef4444" 
                           strokeDasharray="8 4"
                           strokeWidth={2}
+                          label={{ value: `Stop Loss: $${stopLoss.toFixed(4)}`, position: "insideBottomRight" }}
                         />
                       )}
                       {takeProfit && (
@@ -228,6 +292,7 @@ const TradeChartModal: React.FC<TradeChartModalProps> = ({ trade, onClose, stopL
                           stroke="#059669" 
                           strokeDasharray="8 4"
                           strokeWidth={2}
+                          label={{ value: `Take Profit: $${takeProfit.toFixed(4)}`, position: "insideTopRight" }}
                         />
                       )}
                     </LineChart>

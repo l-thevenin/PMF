@@ -343,6 +343,7 @@ function startOCOMonitoring(tradeId: string, monitoringData: SellMonitoringData,
             data: { 
               status: 'SOLD',
               sellPrice: sellPrice,
+              sellTime: new Date(), // Heure exacte de la vente
               sellReason: reason,
               profit: Math.round(profit * 100) / 100
             }
@@ -492,6 +493,7 @@ async function executeSell(tradeId: string, monitoringData: SellMonitoringData, 
       data: { 
         status: 'SOLD',
         sellPrice: sellPrice,
+        sellTime: new Date(), // Heure exacte de la vente
         sellReason: reason,
         profit: Math.round(profit * 100) / 100 // Arrondir à 2 décimales
       }
@@ -518,6 +520,7 @@ async function executeSell(tradeId: string, monitoringData: SellMonitoringData, 
       where: { id: tradeId },
       data: { 
         status: 'SELL_FAILED',
+        sellTime: new Date(), // Heure de l'échec de vente
         sellReason: 'SELL_ERROR'
       }
     });

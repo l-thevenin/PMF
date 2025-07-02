@@ -21,7 +21,7 @@ async function start() {
     binanceConfig: {
       apiKey: process.env.BINANCE_TEST_API_KEY || '',
       apiSecret: process.env.BINANCE_TEST_API_SECRET || '',
-      test: true
+      test: false
     }
   });
   const PORT = parseInt(process.env.PORT || '3000');

@@ -29,6 +29,7 @@ model Trade {
   status            String    // PENDING, EXECUTED, FAILED, SOLD, SELL_FAILED
   executionPrice    Float?
   sellPrice         Float?
+  sellTime          DateTime? // Heure exacte de la vente
   sellReason        String?   // STOP_LOSS, TAKE_PROFIT, TIME_LIMIT
   profit            Float?
   holdingStartTime  DateTime?
