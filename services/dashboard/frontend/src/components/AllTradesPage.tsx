@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Trade } from '../services/api';
+import TradeChartModal from './TradeChartModal';
 
 interface AllTradesPageProps {
   trades?: Trade[];
@@ -10,6 +11,7 @@ const AllTradesPage: React.FC<AllTradesPageProps> = ({ trades = [] }) => {
   const safeTrades = Array.isArray(trades) ? trades : [];
   
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const itemsPerPage = 15;
   
   const totalPages = Math.ceil(safeTrades.length / itemsPerPage);
@@ -35,6 +37,35 @@ const AllTradesPage: React.FC<AllTradesPageProps> = ({ trades = [] }) => {
     if (profit === null || profit === undefined) return '-';
     const color = profit >= 0 ? 'text-green-600' : 'text-red-600';
     return <span className={color}>${profit.toFixed(2)}</span>;
+  };
+
+  const formatSellReason = (reason?: string) => {
+    if (!reason) return '-';
+    const reasonMap: { [key: string]: { label: string; icon: string; color: string } } = {
+      'STOP_LOSS': { label: 'Stop Loss', icon: '🛑', color: 'text-red-600' },
+      'TAKE_PROFIT': { label: 'Take Profit', icon: '🎯', color: 'text-green-600' },
+      'TIME_LIMIT': { label: 'Time Limit', icon: '⏰', color: 'text-yellow-600' },
+    };
+    const config = reasonMap[reason] || { label: reason, icon: '', color: 'text-gray-600' };
+    return (
+      <span className={`${config.color} text-sm`}>
+        {config.icon} {config.label}
+      </span>
+    );
+  };
+
+  // Fonction pour extraire les paramètres de stratégie (stop loss, take profit)
+  const getStrategyParams = (trade: Trade) => {
+    try {
+      // Les paramètres peuvent être dans trade.strategy.parameters ou dans une autre propriété
+      const params = trade.strategy?.parameters || (trade as any).parameters;
+      if (typeof params === 'string') {
+        return JSON.parse(params);
+      }
+      return params || {};
+    } catch {
+      return {};
+    }
   };
 
   const goToPage = (page: number) => {
@@ -83,7 +114,13 @@ const AllTradesPage: React.FC<AllTradesPageProps> = ({ trades = [] }) => {
                   Prix de Vente
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Raison de Vente
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Profit
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Graphique
                 </th>
               </tr>
             </thead>
@@ -106,8 +143,20 @@ const AllTradesPage: React.FC<AllTradesPageProps> = ({ trades = [] }) => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {formatPrice(trade.sellPrice)}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatSellReason(trade.sellReason)}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     {formatProfit(trade.profit)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => setSelectedTrade(trade)}
+                      className="text-blue-600 hover:text-blue-800 font-medium"
+                      title="Voir l'évolution du prix pendant ce trade"
+                    >
+                      📈 Voir graphique
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -166,6 +215,16 @@ const AllTradesPage: React.FC<AllTradesPageProps> = ({ trades = [] }) => {
           </div>
         )}
       </div>
+      
+      {/* Modal pour afficher le graphique du trade */}
+      {selectedTrade && (
+        <TradeChartModal
+          trade={selectedTrade}
+          onClose={() => setSelectedTrade(null)}
+          stopLoss={getStrategyParams(selectedTrade).stopLoss}
+          takeProfit={getStrategyParams(selectedTrade).takeProfit}
+        />
+      )}
     </div>
   );
 };

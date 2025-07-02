@@ -37,6 +37,7 @@ export interface Trade {
     symbol: string;
     timeframe: string;
     confidence: number;
+    parameters?: any;
   };
 }
 

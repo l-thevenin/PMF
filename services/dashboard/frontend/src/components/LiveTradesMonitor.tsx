@@ -134,44 +134,6 @@ const LiveTradesMonitor: React.FC<LiveTradesMonitorProps> = ({ trades = [], acti
         </div>
       )}
 
-      {/* Recently Completed Trades */}
-      {completedTrades.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">✅ Trades Complétés Récemment</h3>
-          
-          <div className="space-y-3">
-            {completedTrades.slice(0, 5).map((trade) => (
-              <div key={trade.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <span className="text-xl">{getStatusIcon(trade.status)}</span>
-                  <div>
-                    <span className="font-semibold text-gray-900">{trade.symbol}</span>
-                    <div className="text-sm text-gray-600">
-                      {trade.executionPrice?.toFixed(4)} → Vendu
-                      {trade.sellReason && (
-                        <span className="ml-2">
-                          {getSellReasonIcon(trade.sellReason)} {trade.sellReason.replace('_', ' ')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className={`text-sm font-semibold ${
-                    (trade.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {trade.profit ? `$${trade.profit.toFixed(2)}` : '$0.00'}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {new Date(trade.createdAt).toLocaleTimeString('fr-FR')}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Failed Trades */}
       {failedTrades.length > 0 && (
         <div className="bg-white rounded-lg shadow-md p-6">
